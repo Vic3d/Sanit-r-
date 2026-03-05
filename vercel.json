@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/api/state", "destination": "/api/state" },
+    { "source": "/api/accept", "destination": "/api/accept" },
+    { "source": "/(.*)", "destination": "/public/index.html" }
+  ],
+  "functions": {
+    "api/state.js": { "maxDuration": 30 },
+    "api/accept.js": { "maxDuration": 20 }
+  }
+}

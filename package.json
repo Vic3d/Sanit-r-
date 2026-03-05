@@ -1,0 +1,12 @@
+{
+  "name": "josh-dashboard",
+  "version": "1.0.0",
+  "description": "Back-Office Dashboard für Gebr. Schutzeichel",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^33.0.0"
+  }
+}

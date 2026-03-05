@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Josh Dashboard – Gebr. Schutzeichel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+    .badge-HOCH { background: #ef4444; color: white; }
+    .badge-MITTEL { background: #f97316; color: white; }
+    .badge-NORMAL { background: #22c55e; color: white; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.5} }
+    .pulse { animation: pulse 1.5s infinite; }
+    .spinner { border:3px solid #334155; border-top-color:#38bdf8; border-radius:50%; width:18px; height:18px; animation: spin .8s linear infinite; display:inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-6">
+
+  <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-white">🔧 Josh Dashboard</h1>
+      <p class="text-slate-400 text-sm">Gebr. Schutzeichel – Back Office</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="lastUpdate" class="text-slate-500 text-xs"></span>
+      <button onclick="refresh()" id="refreshBtn"
+        class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+        ↻ Aktualisieren
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="card p-4 text-center"><div id="statNeu" class="text-3xl font-bold text-red-400">–</div><div class="text-slate-400 text-xs mt-1">Neue Aufträge</div></div>
+    <div class="card p-4 text-center"><div id="statLaufend" class="text-3xl font-bold text-yellow-400">–</div><div class="text-slate-400 text-xs mt-1">Laufend</div></div>
+    <div class="card p-4 text-center"><div id="statSuperchat" class="text-3xl font-bold text-sky-400">–</div><div class="text-slate-400 text-xs mt-1">Superchat</div></div>
+    <div class="card p-4 text-center"><div id="statHero" class="text-3xl font-bold text-green-400">–</div><div class="text-slate-400 text-xs mt-1">Termine heute</div></div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="lg:col-span-2">
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold text-white">📋 Neue B&O Aufträge</h2>
+          <span id="bohwkErr" class="text-red-400 text-xs"></span>
+        </div>
+        <div id="ordersList"><div class="flex gap-2 items-center text-slate-400 py-6 justify-center"><div class="spinner"></div><span>Lade...</span></div></div>
+      </div>
+    </div>
+    <div class="space-y-4">
+      <div class="card p-4">
+        <h2 class="text-lg font-semibold text-white mb-3">💬 Superchat</h2>
+        <div id="superchatList"><div class="text-slate-500 text-sm">Lade...</div></div>
+      </div>
+      <div class="card p-4">
+        <h2 class="text-lg font-semibold text-white mb-3">📅 Termine heute</h2>
+        <div id="heroList"><div class="text-slate-500 text-sm">Lade...</div></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+async function loadState(force=false) {
+  try {
+    const r = await fetch(force ? '/api/state?refresh=1' : '/api/state');
+    const s = await r.json();
+    render(s);
+  } catch(e) { console.error(e); }
+}
+
+async function refresh() {
+  const btn = document.getElementById('refreshBtn');
+  btn.innerHTML = '<div class="spinner"></div>&nbsp;Lädt...';
+  btn.disabled = true;
+  await loadState(true);
+  btn.innerHTML = '↻ Aktualisieren';
+  btn.disabled = false;
+}
+
+function render(s) {
+  const b=s.bohwk||{}, sc=s.superchat||{}, h=s.hero||{}, all=b.allOrders||{};
+  document.getElementById('statNeu').textContent = b.orders?.length ?? '–';
+  document.getElementById('statLaufend').textContent = all.laufend ?? '–';
+  document.getElementById('statSuperchat').textContent = sc.conversations?.length ?? '–';
+  document.getElementById('statHero').textContent = h.appointments?.length ?? '–';
+  if (b.lastUpdate) document.getElementById('lastUpdate').textContent =
+    'Stand: ' + new Date(b.lastUpdate).toLocaleTimeString('de-DE');
+  renderOrders(b.orders||[], b.error);
+  renderSuperchat(sc.conversations||[], sc.error);
+  renderHero(h.appointments||[], h.error);
+}
+
+function renderOrders(orders, err) {
+  const el = document.getElementById('ordersList');
+  document.getElementById('bohwkErr').textContent = err||'';
+  if (!orders.length) {
+    el.innerHTML = err
+      ? `<div class="text-red-400 text-sm py-2">${err}</div>`
+      : `<div class="text-green-400 py-6 text-center text-sm">✅ Keine neuen Aufträge</div>`;
+    return;
+  }
+  el.innerHTML = orders.map(o => {
+    const a = o._analysis||{};
+    const bc = {HOCH:'border-red-700 bg-red-950/20',MITTEL:'border-orange-700',NORMAL:'border-slate-700'}[a.priority]||'border-slate-700';
+    const dist = (o.DisturbanceType||'').replace(/^\d+ /,'');
+    const notes = (a.notes||[]).map(n=>`<span class="text-yellow-300">${n}</span>`).join(' · ');
+    return `<div class="border ${bc} rounded-lg p-4 mb-3">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-2 mb-1">
+            ${a.emergency?'<span class="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full font-bold pulse">🚨 NOTFALL</span>':''}
+            <span class="badge-${a.priority||'NORMAL'} text-xs px-2 py-0.5 rounded-full">${a.priority||'?'}</span>
+            <span class="text-white font-semibold text-sm">${o.City}, ${o.Street}</span>
+          </div>
+          <div class="text-slate-300 text-sm">${o.Craft} – ${o.Damage}</div>
+          <div class="text-slate-400 text-xs">${dist}</div>
+          ${o.Remarks?`<div class="text-slate-500 text-xs mt-1 truncate">${o.Remarks.substring(0,100)}</div>`:''}
+          ${notes?`<div class="mt-1 text-xs">${notes}</div>`:''}
+        </div>
+        <div class="text-right shrink-0">
+          <div class="text-green-400 font-bold text-sm">${a.priceRange||'–'}</div>
+          <div class="text-slate-400 text-xs">⏱ ${a.time||'–'}</div>
+          <div class="text-slate-600 text-xs">#${o.ID?.SourceId}</div>
+        </div>
+      </div>
+      <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
+        <div class="text-xs text-slate-400 truncate">👤 ${o.Renter||'–'} · 📞 ${(o.Telephone||'–').replace(/^-/,'')}</div>
+        <div class="flex gap-2 shrink-0">
+          <a href="https://bohwk.de/#/orderDetail_${o.ID?.SourceId}.html" target="_blank"
+            class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded-lg transition">Öffnen</a>
+          <button onclick="acceptOrder(${o.ID?.SourceId},this)"
+            class="bg-sky-700 hover:bg-sky-600 text-white text-xs px-3 py-1.5 rounded-lg transition">→ Hero</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSuperchat(convos, err) {
+  const el = document.getElementById('superchatList');
+  if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
+  if (!convos.length) { el.innerHTML=`<div class="text-slate-500 text-sm">Keine offenen Gespräche</div>`; return; }
+  el.innerHTML = convos.slice(0,8).map(c=>`
+    <div class="flex items-start gap-2 py-2 border-b border-slate-700 last:border-0">
+      <div class="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-sm shrink-0 font-bold">${(c.contactName||'?')[0].toUpperCase()}</div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-1">
+          <span class="text-white text-sm font-medium truncate">${c.contactName}</span>
+          ${c.unreadCount>0?`<span class="bg-sky-500 text-white text-xs rounded-full px-1.5 shrink-0">${c.unreadCount}</span>`:''}
+        </div>
+        <div class="text-slate-400 text-xs truncate">${c.lastMessage||'–'}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderHero(apps, err) {
+  const el = document.getElementById('heroList');
+  if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
+  if (!apps.length) { el.innerHTML=`<div class="text-slate-500 text-sm">Keine Termine heute</div>`; return; }
+  el.innerHTML = apps.map(a=>{
+    const t = a.scheduledAt ? new Date(a.scheduledAt).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '–';
+    return `<div class="py-2 border-b border-slate-700 last:border-0">
+      <div class="flex justify-between"><span class="text-sky-400 font-mono text-sm">${t}</span><span class="text-xs text-slate-400">${a.status||''}</span></div>
+      <div class="text-white text-sm">${a.title||'–'}</div>
+      <div class="text-slate-400 text-xs">${a.address||''}</div>
+    </div>`;
+  }).join('');
+}
+
+async function acceptOrder(id, btn) {
+  btn.textContent='⏳'; btn.disabled=true;
+  try {
+    const r = await fetch(`/api/accept?id=${id}`,{method:'POST'});
+    const d = await r.json();
+    if (d.ok) { btn.textContent='✅'; btn.className='bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg'; }
+    else { btn.textContent='❌'; btn.disabled=false; alert('Fehler: '+(d.error||'?')); }
+  } catch { btn.textContent='❌'; btn.disabled=false; }
+}
+
+loadState();
+setInterval(()=>loadState(), 5*60*1000);
+</script>
+</body>
+</html>
