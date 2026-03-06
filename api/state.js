@@ -1,11 +1,11 @@
 const { getOrders } = require('./_lib/bohwk');
 const { getOpenConversations } = require('./_lib/superchat');
-const { getTodayAppointments } = require('./_lib/hero');
+const { getTodayAppointments, getVictorTasks } = require('./_lib/hero');
 const { analyze } = require('./_lib/analyzer');
 
 // Cache NUR für B&O + Hero (selten ändernd)
 // Superchat wird IMMER frisch geladen (Cursor-Cache macht es schnell)
-let cache = { bohwk: null, hero: null, at: 0 };
+let cache = { bohwk: null, hero: null, tasks: null, at: 0 };
 const CACHE_TTL = 5 * 60 * 1000; // 5 Minuten für B&O/Hero
 
 
@@ -22,14 +22,16 @@ module.exports = async (req, res) => {
     const superchatPromise = getOpenConversations();
 
     // B&O + Hero aus Cache oder neu laden
-    let bohwk, hero;
+    let bohwk, hero, tasks;
     if (cacheValid) {
       bohwk = cache.bohwk;
       hero = cache.hero;
+      tasks = cache.tasks;
     } else {
-      const [ordersResult, heroResult] = await Promise.allSettled([
+      const [ordersResult, heroResult, tasksResult] = await Promise.allSettled([
         getOrders(),
         getTodayAppointments(),
+        getVictorTasks(),
       ]);
       const timestamp = new Date().toISOString();
 
@@ -56,7 +58,13 @@ module.exports = async (req, res) => {
         hero = { appointments: [], lastUpdate: timestamp, error: heroResult.reason?.message || 'Fehler' };
       }
 
-      cache = { bohwk, hero, at: now };
+      if (tasksResult.status === 'fulfilled') {
+        tasks = { items: tasksResult.value, lastUpdate: timestamp, error: null };
+      } else {
+        tasks = { items: [], lastUpdate: timestamp, error: tasksResult.reason?.message || 'Fehler' };
+      }
+
+      cache = { bohwk, hero, tasks, at: now };
     }
 
     // Superchat-Ergebnis abwarten
@@ -68,7 +76,7 @@ module.exports = async (req, res) => {
       superchat = { conversations: [], lastUpdate: new Date().toISOString(), error: err.message };
     }
 
-    res.json({ bohwk, superchat, hero, cached: cacheValid });
+    res.json({ bohwk, superchat, hero, tasks, cached: cacheValid });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

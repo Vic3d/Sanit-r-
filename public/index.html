@@ -140,6 +140,10 @@
         <h2 class="text-lg font-semibold text-white mb-3">📅 Termine heute</h2>
         <div id="heroList"><div class="text-slate-500 text-sm">Lade...</div></div>
       </div>
+      <div class="card p-4">
+        <h2 class="text-lg font-semibold text-white mb-3">✅ Aufgaben (Victor)</h2>
+        <div id="tasksList"><div class="text-slate-500 text-sm">Lade...</div></div>
+      </div>
     </div>
   </div>
 
@@ -219,7 +223,7 @@ async function refresh() {
 }
 
 function render(s) {
-  const b=s.bohwk||{}, sc=s.superchat||{}, h=s.hero||{}, all=b.allOrders||{};
+  const b=s.bohwk||{}, sc=s.superchat||{}, h=s.hero||{}, tk=s.tasks||{}, all=b.allOrders||{};
   _orders = b.orders||[];
   document.getElementById('statNeu').textContent = _orders.length;
   document.getElementById('statLaufend').textContent = all.laufend ?? '–';
@@ -236,6 +240,7 @@ function render(s) {
   renderOrders(_orders, b.error);
   renderSuperchat(sc.conversations||[], sc.error);
   renderHero(h.appointments||[], h.error);
+  renderTasks(tk.items||[], tk.error);
   updateWorkload(_orders);
 }
 
@@ -471,11 +476,39 @@ function renderHero(apps, err) {
   if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
   if (!apps.length) { el.innerHTML=`<div class="text-slate-500 text-sm">Keine Termine heute</div>`; return; }
   el.innerHTML = apps.map(a=>{
-    const t = a.scheduledAt ? new Date(a.scheduledAt).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '–';
+    const t = a.start ? new Date(a.start).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '–';
+    const te = a.end ? new Date(a.end).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
+    const typeLabel = { repair:'Reparatur', maintenance:'Wartung', other:'Sonstiges' }[a.type] || a.type || '';
+    const customer = a.customer ? `<span class="text-slate-300 text-xs">${a.customer}</span>` : '';
     return `<div class="py-2 border-b border-slate-700 last:border-0">
-      <div class="flex justify-between"><span class="text-sky-400 font-mono text-sm">${t}</span><span class="text-xs text-slate-400">${a.status||''}</span></div>
-      <div class="text-white text-sm">${a.title||'–'}</div>
-      <div class="text-slate-400 text-xs">${a.address||''}</div>
+      <div class="flex justify-between items-start">
+        <span class="text-sky-400 font-mono text-sm font-bold">${t}${te?' – '+te:''}</span>
+        <span class="text-xs text-slate-500 ml-2">${typeLabel}</span>
+      </div>
+      ${customer}
+      <div class="text-white text-sm mt-0.5">${a.address||'–'}</div>
+      ${a.description ? `<div class="text-slate-400 text-xs mt-0.5 line-clamp-2">${a.description.trim()}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Victor Tasks ─────────────────────────────────────────────────
+function renderTasks(items, err) {
+  const el = document.getElementById('tasksList');
+  if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
+  if (!items || !items.length) { el.innerHTML=`<div class="text-slate-500 text-sm">Keine offenen Aufgaben</div>`; return; }
+  el.innerHTML = items.map(t=>{
+    const due = t.dueDate ? new Date(t.dueDate) : null;
+    const now = new Date();
+    const isOverdue = due && due < now;
+    const dueFmt = due ? due.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) + ' ' + due.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
+    const dueColor = isOverdue ? 'text-red-400' : 'text-amber-400';
+    return `<div class="py-2 border-b border-slate-700 last:border-0">
+      <div class="flex justify-between items-start gap-2">
+        <div class="text-white text-sm font-medium">${t.title}</div>
+        ${dueFmt ? `<div class="text-xs ${dueColor} whitespace-nowrap">${isOverdue?'⚠ ':''}${dueFmt}</div>` : ''}
+      </div>
+      ${t.comment ? `<div class="text-slate-400 text-xs mt-0.5">${t.comment.trim()}</div>` : ''}
     </div>`;
   }).join('');
 }

@@ -1,11 +1,13 @@
 const https = require('https');
 
+const VICTOR_USER_ID = 311332; // Victor Dobrowolny in Hero (target_user.id)
+
 async function graphql(query, variables = {}) {
   const body = JSON.stringify({ query, variables });
   return new Promise((resolve, reject) => {
     const req = https.request({
-      hostname: 'login.hero-software.de',  // Korrekte Domain
-      path: '/Api/graphql',               // Korrekte Groß-/Kleinschreibung
+      hostname: 'login.hero-software.de',
+      path: '/Api/graphql',
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.HERO_API_KEY || 'ac_zr8U50hpotlbK9RENAcGOkUX94YGGaHw'}`,
@@ -40,7 +42,6 @@ async function getTodayAppointments() {
 
   const jobs = data?.field_service_jobs || [];
 
-  // Nur heutige Jobs (UTC-Datum vergleichen)
   return jobs
     .filter(j => (j.start || '').startsWith(today))
     .sort((a, b) => (a.start || '').localeCompare(b.start || ''))
@@ -59,4 +60,31 @@ async function getTodayAppointments() {
     }));
 }
 
-module.exports = { getTodayAppointments };
+async function getVictorTasks() {
+  const data = await graphql(`{
+    tasks {
+      id title comment due_date done_date created
+      target_user { id }
+    }
+  }`);
+
+  const tasks = data?.tasks || [];
+
+  return tasks
+    .filter(t => t.target_user?.id === VICTOR_USER_ID && !t.done_date)
+    .sort((a, b) => {
+      // Tasks mit Fälligkeitsdatum zuerst, dann nach Datum
+      if (a.due_date && !b.due_date) return -1;
+      if (!a.due_date && b.due_date) return 1;
+      return (a.due_date || a.created || '').localeCompare(b.due_date || b.created || '');
+    })
+    .map(t => ({
+      id: t.id,
+      title: t.title.trim(),
+      comment: t.comment || '',
+      dueDate: t.due_date,
+      created: t.created,
+    }));
+}
+
+module.exports = { getTodayAppointments, getVictorTasks };
