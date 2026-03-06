@@ -15,14 +15,24 @@
     .pulse { animation: pulse 1.5s infinite; }
     .spinner { border:3px solid #334155; border-top-color:#38bdf8; border-radius:50%; width:18px; height:18px; animation: spin .8s linear infinite; display:inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .tech-card { background: #162032; border: 2px solid #1e3a5f; border-radius: 10px; transition: border-color .2s; }
+    .tech-card:hover { border-color: #3b82f6; }
+    .tech-card.nord { border-color: #3b1a1a; }
+    .tech-card.nord:hover { border-color: #dc2626; }
+    .workload-bar { height: 6px; border-radius: 3px; background: #334155; overflow: hidden; }
+    .workload-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+    .assign-menu { display:none; position:absolute; z-index:50; top:100%; right:0; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:180px; box-shadow:0 4px 20px rgba(0,0,0,.4); }
+    .assign-menu.open { display:block; }
+    .order-card.assigned { opacity: 0.65; }
   </style>
 </head>
 <body class="min-h-screen p-4 md:p-6">
 
-  <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
     <div>
       <h1 class="text-2xl font-bold text-white">🔧 Josh Dashboard</h1>
-      <p class="text-slate-400 text-sm">Gebr. Schutzeichel – Back Office</p>
+      <p class="text-slate-400 text-sm">Gebr. Schutzeichel – Disposition</p>
     </div>
     <div class="flex items-center gap-3">
       <span id="lastUpdate" class="text-slate-500 text-xs"></span>
@@ -33,14 +43,83 @@
     </div>
   </div>
 
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+  <!-- Stats -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
     <div class="card p-4 text-center"><div id="statNeu" class="text-3xl font-bold text-red-400">–</div><div class="text-slate-400 text-xs mt-1">Neue Aufträge</div></div>
     <div class="card p-4 text-center"><div id="statLaufend" class="text-3xl font-bold text-yellow-400">–</div><div class="text-slate-400 text-xs mt-1">Laufend</div></div>
     <div class="card p-4 text-center"><div id="statSuperchat" class="text-3xl font-bold text-sky-400">–</div><div class="text-slate-400 text-xs mt-1">Superchat</div></div>
     <div class="card p-4 text-center"><div id="statHero" class="text-3xl font-bold text-green-400">–</div><div class="text-slate-400 text-xs mt-1">Termine heute</div></div>
   </div>
 
+  <!-- Monteur-Auslastung -->
+  <div class="card p-4 mb-5">
+    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">👷 Monteur-Auslastung</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+      <!-- Nord -->
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+          <span class="text-red-400 font-semibold text-sm">Distrikt Nord</span>
+          <span class="text-slate-500 text-xs">(Osnabrück · Münster · Bielefeld)</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div id="tech-158931" class="tech-card nord p-3">
+            <div class="text-white text-sm font-medium truncate">Ramiz Z.</div>
+            <div class="text-slate-400 text-xs mb-2">Zoronjic</div>
+            <div class="workload-bar mb-1"><div id="wb-158931" class="workload-fill bg-red-500" style="width:0%"></div></div>
+            <div class="flex justify-between text-xs">
+              <span id="wl-jobs-158931" class="text-slate-300">0 Jobs</span>
+              <span id="wl-hours-158931" class="text-slate-400">0h</span>
+            </div>
+          </div>
+          <div id="tech-158934" class="tech-card nord p-3">
+            <div class="text-white text-sm font-medium truncate">Nico K.</div>
+            <div class="text-slate-400 text-xs mb-2">Koussios</div>
+            <div class="workload-bar mb-1"><div id="wb-158934" class="workload-fill bg-red-500" style="width:0%"></div></div>
+            <div class="flex justify-between text-xs">
+              <span id="wl-jobs-158934" class="text-slate-300">0 Jobs</span>
+              <span id="wl-hours-158934" class="text-slate-400">0h</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ost -->
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+          <span class="text-blue-400 font-semibold text-sm">Distrikt Ost</span>
+          <span class="text-slate-500 text-xs">(Dortmund · Iserlohn · Hemer · Siegen)</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div id="tech-158932" class="tech-card p-3">
+            <div class="text-white text-sm font-medium truncate">Adem D.</div>
+            <div class="text-slate-400 text-xs mb-2">Dedeic</div>
+            <div class="workload-bar mb-1"><div id="wb-158932" class="workload-fill bg-blue-500" style="width:0%"></div></div>
+            <div class="flex justify-between text-xs">
+              <span id="wl-jobs-158932" class="text-slate-300">0 Jobs</span>
+              <span id="wl-hours-158932" class="text-slate-400">0h</span>
+            </div>
+          </div>
+          <div id="tech-158936" class="tech-card p-3">
+            <div class="text-white text-sm font-medium truncate">Nicolai W.</div>
+            <div class="text-slate-400 text-xs mb-2">Walczak</div>
+            <div class="workload-bar mb-1"><div id="wb-158936" class="workload-fill bg-blue-500" style="width:0%"></div></div>
+            <div class="flex justify-between text-xs">
+              <span id="wl-jobs-158936" class="text-slate-300">0 Jobs</span>
+              <span id="wl-hours-158936" class="text-slate-400">0h</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Main Grid: Aufträge + Sidebar -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- Aufträge -->
     <div class="lg:col-span-2">
       <div class="card p-4">
         <div class="flex items-center justify-between mb-4">
@@ -50,6 +129,8 @@
         <div id="ordersList"><div class="flex gap-2 items-center text-slate-400 py-6 justify-center"><div class="spinner"></div><span>Lade...</span></div></div>
       </div>
     </div>
+
+    <!-- Sidebar -->
     <div class="space-y-4">
       <div class="card p-4">
         <h2 class="text-lg font-semibold text-white mb-3">💬 Superchat</h2>
@@ -63,6 +144,63 @@
   </div>
 
 <script>
+// ── Monteur-Konfig ──────────────────────────────────────────────
+const TECHNICIANS = {
+  nord: [
+    { id: 158931, name: 'Ramiz Zoronjic',  short: 'Ramiz Z.',   district: 'Nord' },
+    { id: 158934, name: 'Nico Koussios',   short: 'Nico K.',    district: 'Nord' }
+  ],
+  ost: [
+    { id: 158932, name: 'Adem Dedeic',     short: 'Adem D.',    district: 'Ost'  },
+    { id: 158936, name: 'Nicolai Walczak', short: 'Nicolai W.', district: 'Ost'  }
+  ]
+};
+const ALL_TECHS = [...TECHNICIANS.nord, ...TECHNICIANS.ost];
+
+// Zuweisung im localStorage speichern (per Tag)
+const TODAY = new Date().toISOString().slice(0,10);
+const STORE_KEY = `assignments-${TODAY}`;
+let assignments = JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
+
+function saveAssignments() { localStorage.setItem(STORE_KEY, JSON.stringify(assignments)); }
+
+// Geschätzte Stunden aus time-String
+function parseHours(t) {
+  if (!t) return 1;
+  const m = t.match(/(\d+)\s*[-–]\s*(\d+)/);
+  if (m) return (parseInt(m[1])+parseInt(m[2]))/2;
+  const s = t.match(/^(\d+)/);
+  return s ? parseInt(s[1]) : 1;
+}
+
+// ── Auslastung berechnen + anzeigen ─────────────────────────────
+function updateWorkload(orders) {
+  const techOrders = {};
+  ALL_TECHS.forEach(t => techOrders[t.id] = []);
+  orders.forEach(o => {
+    const tid = assignments[o.ID?.SourceId];
+    if (tid && techOrders[tid]) techOrders[tid].push(o);
+  });
+
+  const maxHours = 8;
+  ALL_TECHS.forEach(t => {
+    const myOrders = techOrders[t.id];
+    const jobs = myOrders.length;
+    const hours = myOrders.reduce((sum, o) => sum + parseHours(o._analysis?.time), 0);
+    const pct = Math.min(100, Math.round((hours / maxHours) * 100));
+    const color = pct > 80 ? '#ef4444' : pct > 50 ? '#f97316' : t.district === 'Nord' ? '#dc2626' : '#3b82f6';
+    const el = document.getElementById(`wb-${t.id}`);
+    if (el) { el.style.width = pct+'%'; el.style.background = color; }
+    const jEl = document.getElementById(`wl-jobs-${t.id}`);
+    if (jEl) jEl.textContent = jobs + (jobs===1?' Job':' Jobs');
+    const hEl = document.getElementById(`wl-hours-${t.id}`);
+    if (hEl) hEl.textContent = hours > 0 ? `~${hours}h` : '0h';
+  });
+}
+
+// ── State laden ─────────────────────────────────────────────────
+let _orders = [];
+
 async function loadState(force=false) {
   try {
     const r = await fetch(force ? '/api/state?refresh=1' : '/api/state');
@@ -82,17 +220,20 @@ async function refresh() {
 
 function render(s) {
   const b=s.bohwk||{}, sc=s.superchat||{}, h=s.hero||{}, all=b.allOrders||{};
-  document.getElementById('statNeu').textContent = b.orders?.length ?? '–';
+  _orders = b.orders||[];
+  document.getElementById('statNeu').textContent = _orders.length;
   document.getElementById('statLaufend').textContent = all.laufend ?? '–';
   document.getElementById('statSuperchat').textContent = sc.conversations?.length ?? '–';
   document.getElementById('statHero').textContent = h.appointments?.length ?? '–';
   if (b.lastUpdate) document.getElementById('lastUpdate').textContent =
     'Stand: ' + new Date(b.lastUpdate).toLocaleTimeString('de-DE');
-  renderOrders(b.orders||[], b.error);
+  renderOrders(_orders, b.error);
   renderSuperchat(sc.conversations||[], sc.error);
   renderHero(h.appointments||[], h.error);
+  updateWorkload(_orders);
 }
 
+// ── Aufträge rendern ─────────────────────────────────────────────
 function renderOrders(orders, err) {
   const el = document.getElementById('ordersList');
   document.getElementById('bohwkErr').textContent = err||'';
@@ -104,34 +245,80 @@ function renderOrders(orders, err) {
   }
   el.innerHTML = orders.map(o => {
     const a = o._analysis||{};
+    const id = o.ID?.SourceId;
+    const cc = o.CustomerCenter||'';
+    const isNord = cc.includes('Nord');
+    const isOst  = cc.includes('Ost');
     const bc = {HOCH:'border-red-700 bg-red-950/20',MITTEL:'border-orange-700',NORMAL:'border-slate-700'}[a.priority]||'border-slate-700';
     const dist = (o.DisturbanceType||'').replace(/^\d+ /,'');
-    const notes = (a.notes||[]).map(n=>`<span class="text-yellow-300">${n}</span>`).join(' · ');
-    return `<div class="border ${bc} rounded-lg p-4 mb-3">
+    const notes = (a.notes||[]).map(n=>`<span class="text-yellow-300 text-xs">${n}</span>`).join(' · ');
+    const distBadge = isNord
+      ? `<span style="background:#dc2626;color:#fff;font-size:10px;padding:1px 8px;border-radius:9999px;font-weight:700">🔴 Nord</span>`
+      : isOst
+      ? `<span style="background:#2563eb;color:#fff;font-size:10px;padding:1px 8px;border-radius:9999px;font-weight:700">🔵 Ost</span>`
+      : '';
+
+    // Zugewiesener Techniker
+    const assignedId = assignments[id];
+    const assignedTech = ALL_TECHS.find(t => t.id == assignedId);
+    const assignedLabel = assignedTech
+      ? `<span class="text-green-400 text-xs font-medium">✓ ${assignedTech.short}</span>`
+      : `<span class="text-slate-500 text-xs">Nicht zugewiesen</span>`;
+
+    // Techniker-Optionen für diesen Distrikt
+    const techOptions = (isNord ? TECHNICIANS.nord : isOst ? TECHNICIANS.ost : ALL_TECHS)
+      .map(t => `<button onclick="assignOrder(${id}, ${t.id}, event)"
+        class="w-full text-left px-3 py-2 text-sm hover:bg-slate-700 flex items-center justify-between ${assignments[id]==t.id?'text-green-400':'text-slate-200'}">
+        <span>${t.name}</span>
+        ${assignments[id]==t.id?'<span class="text-xs">✓</span>':''}
+      </button>`).join('');
+
+    const isAssigned = !!assignedTech;
+
+    return `<div class="border ${bc} rounded-lg p-4 mb-3 order-card ${isAssigned?'assigned':''}" id="order-${id}">
       <div class="flex items-start justify-between gap-3">
         <div class="flex-1 min-w-0">
           <div class="flex flex-wrap items-center gap-2 mb-1">
             ${a.emergency?'<span class="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full font-bold pulse">🚨 NOTFALL</span>':''}
             <span class="badge-${a.priority||'NORMAL'} text-xs px-2 py-0.5 rounded-full">${a.priority||'?'}</span>
+            ${distBadge}
             <span class="text-white font-semibold text-sm">${o.City}, ${o.Street}</span>
           </div>
           <div class="text-slate-300 text-sm">${o.Craft} – ${o.Damage}</div>
           <div class="text-slate-400 text-xs">${dist}</div>
-          ${o.Remarks?`<div class="text-slate-500 text-xs mt-1 truncate">${o.Remarks.substring(0,100)}</div>`:''}
-          ${notes?`<div class="mt-1 text-xs">${notes}</div>`:''}
+          ${o.Remarks?`<div class="text-slate-500 text-xs mt-1 line-clamp-1">${o.Remarks.substring(0,100)}</div>`:''}
+          ${notes?`<div class="mt-1">${notes}</div>`:''}
         </div>
         <div class="text-right shrink-0">
           <div class="text-green-400 font-bold text-sm">${a.priceRange||'–'}</div>
           <div class="text-slate-400 text-xs">⏱ ${a.time||'–'}</div>
-          <div class="text-slate-600 text-xs">#${o.ID?.SourceId}</div>
+          <div class="text-slate-600 text-xs">#${id}</div>
         </div>
       </div>
-      <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
-        <div class="text-xs text-slate-400 truncate">👤 ${o.Renter||'–'} · 📞 ${(o.Telephone||'–').replace(/^-/,'')}</div>
-        <div class="flex gap-2 shrink-0">
-          <a href="https://bohwk.de/#/orderDetail_${o.ID?.SourceId}.html" target="_blank"
+      <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-700 gap-2 flex-wrap">
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-400">👤 ${o.Renter||'–'} · 📞 ${(o.Telephone||'–')}</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          ${assignedLabel}
+          <!-- Zuweisung Dropdown -->
+          <div class="relative">
+            <button onclick="toggleAssignMenu(${id}, event)"
+              class="${isAssigned ? 'bg-green-800 hover:bg-green-700' : 'bg-slate-700 hover:bg-slate-600'} text-white text-xs px-3 py-1.5 rounded-lg transition">
+              👷 Zuweisen
+            </button>
+            <div id="assign-menu-${id}" class="assign-menu">
+              ${techOptions}
+              ${isAssigned?`<div class="border-t border-slate-700"></div>
+              <button onclick="assignOrder(${id}, null, event)"
+                class="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-slate-700">
+                ✕ Zuweisung aufheben
+              </button>`:''}
+            </div>
+          </div>
+          <a href="https://bohwk.de/#/orderDetail_${id}.html" target="_blank"
             class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded-lg transition">Öffnen</a>
-          <button onclick="acceptOrder(${o.ID?.SourceId},this)"
+          <button onclick="acceptOrder(${id}, this)"
             class="bg-sky-700 hover:bg-sky-600 text-white text-xs px-3 py-1.5 rounded-lg transition">→ Hero</button>
         </div>
       </div>
@@ -139,6 +326,32 @@ function renderOrders(orders, err) {
   }).join('');
 }
 
+// ── Zuweisung ────────────────────────────────────────────────────
+function toggleAssignMenu(orderId, e) {
+  e.stopPropagation();
+  document.querySelectorAll('.assign-menu.open').forEach(m => {
+    if (m.id !== `assign-menu-${orderId}`) m.classList.remove('open');
+  });
+  document.getElementById(`assign-menu-${orderId}`)?.classList.toggle('open');
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.assign-menu.open').forEach(m => m.classList.remove('open'));
+});
+
+function assignOrder(orderId, techId, e) {
+  e?.stopPropagation();
+  if (techId === null) {
+    delete assignments[orderId];
+  } else {
+    assignments[orderId] = techId;
+  }
+  saveAssignments();
+  renderOrders(_orders, null);
+  updateWorkload(_orders);
+}
+
+// ── Superchat ─────────────────────────────────────────────────────
 function renderSuperchat(convos, err) {
   const el = document.getElementById('superchatList');
   if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
@@ -156,6 +369,7 @@ function renderSuperchat(convos, err) {
     </div>`).join('');
 }
 
+// ── Hero Termine ─────────────────────────────────────────────────
 function renderHero(apps, err) {
   const el = document.getElementById('heroList');
   if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
@@ -170,6 +384,7 @@ function renderHero(apps, err) {
   }).join('');
 }
 
+// ── B&O Accept ───────────────────────────────────────────────────
 async function acceptOrder(id, btn) {
   btn.textContent='⏳'; btn.disabled=true;
   try {
