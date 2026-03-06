@@ -1,14 +1,16 @@
 const https = require('https');
 
+const API_KEY = process.env.SUPERCHAT_API_KEY || '01a180cb-9f52-4a04-985a-93d14bfb4a34';
+
 function request(method, path, body = null) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
     const req = https.request({
-      hostname: 'api.superchat.de',
+      hostname: 'api.superchat.com',
       path,
       method,
       headers: {
-        'x-api-key': process.env.SUPERCHAT_API_KEY || '1daf89c1-8ba6-4d91-9fdc-ba46ce1ba7ce',
+        'X-API-KEY': API_KEY,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {})
@@ -27,27 +29,54 @@ function request(method, path, body = null) {
   });
 }
 
-async function getOpenConversations() {
-  const { status, data } = await request('GET', '/v1/conversations?status=open&limit=50');
-  if (status === 200 && data.items) return mapConversations(data.items);
-
-  // Alternativer Endpoint
-  const r2 = await request('GET', '/v1/chats?status=open&limit=50');
-  if (r2.status === 200 && r2.data.items) return mapConversations(r2.data.items);
-
-  return [];
+async function getContact(contactId) {
+  const { status, data } = await request('GET', `/v1.0/contacts/${contactId}`);
+  if (status === 200) return data;
+  return null;
 }
 
-function mapConversations(items) {
-  return items.map(c => ({
-    id: c.id,
-    contactName: c.contact?.name || c.contactName || 'Unbekannt',
-    phone: c.contact?.phone || c.phone || '',
-    lastMessage: c.lastMessage?.text || c.preview || '',
-    lastMessageAt: c.lastMessage?.createdAt || c.updatedAt || null,
-    unreadCount: c.unreadCount || 0,
-    status: c.status || 'open',
-  }));
+async function getOpenConversations() {
+  const { status, data } = await request('GET', '/v1.0/conversations?status=open&limit=20');
+  if (status !== 200 || !data.results) return [];
+
+  // Kontaktdaten parallel laden (max 20 Conversations)
+  const conversations = data.results.slice(0, 20);
+  const contactIds = conversations
+    .map(c => c.contacts?.[0]?.id)
+    .filter(Boolean);
+
+  // Unique contact IDs
+  const uniqueIds = [...new Set(contactIds)];
+  const contactMap = {};
+
+  await Promise.all(
+    uniqueIds.map(async (id) => {
+      const contact = await getContact(id);
+      if (contact) contactMap[id] = contact;
+    })
+  );
+
+  return conversations.map(c => {
+    const contactId = c.contacts?.[0]?.id;
+    const contact = contactId ? contactMap[contactId] : null;
+
+    const firstName = contact?.first_name || '';
+    const lastName = contact?.last_name || '';
+    const name = [firstName, lastName].filter(Boolean).join(' ') || 'Unbekannt';
+
+    const phone = contact?.handles?.find(h => h.type === 'phone')?.value || '';
+
+    return {
+      id: c.id,
+      contactName: name,
+      phone,
+      lastMessage: '',
+      lastMessageAt: c.time_window?.open_until || null,
+      unreadCount: 0,
+      status: c.status || 'open',
+      assignedTo: c.assigned_users?.[0]?.email || null,
+    };
+  });
 }
 
 module.exports = { getOpenConversations };
