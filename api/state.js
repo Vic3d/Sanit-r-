@@ -1,11 +1,11 @@
 const { getOrders } = require('./_lib/bohwk');
-const { getOpenConversations } = require('./_lib/superchat');
+const { getOpenConversations, checkAndResetInvalid } = require('./_lib/superchat');
 const { getTodayAppointments } = require('./_lib/hero');
 const { analyze } = require('./_lib/analyzer');
 
 // Cache für den State (überlebt Lambda-Warmstart)
 let cache = { data: null, at: 0 };
-const CACHE_TTL = 10 * 60 * 1000; // 10 Minuten
+const CACHE_TTL = 5 * 60 * 1000; // 5 Minuten
 
 async function buildState() {
   const results = await Promise.allSettled([
@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
 
-  const force = req.query.refresh === '1';
+  const force = req.query.refresh === '1' || checkAndResetInvalid();
 
   if (!force && cache.data && (Date.now() - cache.at) < CACHE_TTL) {
     return res.json({ ...cache.data, cached: true });
