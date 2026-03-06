@@ -426,9 +426,7 @@ function renderSuperchat(convos, err) {
     }
 
     const badge = needsAns
-      ? `<span style="background:#f97316;color:#fff;font-size:10px;padding:1px 7px;border-radius:9999px;font-weight:700;flex-shrink:0">● Neu</span>
-         <button onclick="ackConv(event,'${c.id}')" title="Als gelesen markieren"
-           style="background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:10px;padding:1px 6px;border-radius:4px;cursor:pointer;flex-shrink:0">✓</button>`
+      ? `<span style="background:#f97316;color:#fff;font-size:10px;padding:1px 7px;border-radius:9999px;font-weight:700;flex-shrink:0">● Neu</span>`
       : '';
 
     const msgPreview = msgText
@@ -437,7 +435,7 @@ function renderSuperchat(convos, err) {
 
     return `
       <div style="display:flex;gap:8px;padding:10px 8px;border-bottom:1px solid #1e293b;${borderStyle};cursor:pointer"
-           onclick="window.open('https://app.superchat.de/conversations/${c.id}','_blank')">
+           onclick="openConv('${c.id}', ${needsAns})">
         ${statusDot}
         <div style="width:32px;height:32px;border-radius:50%;background:${bgAvatar};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">
           ${(c.contactName||'?')[0].toUpperCase()}
@@ -493,21 +491,18 @@ async function acceptOrder(id, btn) {
   } catch { btn.textContent='❌'; btn.disabled=false; }
 }
 
-async function ackConv(evt, convId) {
-  evt.stopPropagation(); // nicht auf Superchat-Link klicken
-  const btn = evt.target;
-  btn.textContent = '…';
-  btn.disabled = true;
-  try {
-    await fetch('/api/ack', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ convId })
-    });
-    loadState(); // sofort neu laden
-  } catch {
-    btn.textContent = '✓';
-    btn.disabled = false;
+async function openConv(convId, isUnread) {
+  window.open(`https://app.superchat.de/conversations/${convId}`, '_blank');
+  if (isUnread) {
+    // Automatisch als gelesen markieren wenn Gespräch geöffnet wird
+    try {
+      await fetch('/api/ack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ convId })
+      });
+      setTimeout(loadState, 800); // kurz warten dann neu laden
+    } catch {}
   }
 }
 
