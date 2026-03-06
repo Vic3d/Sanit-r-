@@ -1,4 +1,4 @@
-const { invalidateCache } = require('../_lib/superchat');
+const { invalidateCache, updateConversation } = require('../_lib/superchat');
 const { storeMessage } = require('../_lib/messageStore');
 
 // Superchat Webhook Receiver

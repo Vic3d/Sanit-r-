@@ -225,8 +225,11 @@ function render(s) {
   document.getElementById('statLaufend').textContent = all.laufend ?? '–';
   const scConvos = sc.conversations || [];
   const scPending = scConvos.filter(c => c.lastDirection === 'inbound').length;
+  const scUrgent  = scConvos.filter(c => c.minutesLeft !== null && c.minutesLeft < 120).length;
   document.getElementById('statSuperchat').textContent = scConvos.length;
-  document.getElementById('statSuperchatSub').textContent = scPending > 0 ? `${scPending} warten` : 'alle beantwortet';
+  document.getElementById('statSuperchatSub').textContent =
+    scUrgent > 0 ? `${scUrgent} läuft ab` :
+    scPending > 0 ? `${scPending} warten` : 'alle beantwortet';
   document.getElementById('statHero').textContent = h.appointments?.length ?? '–';
   if (b.lastUpdate) document.getElementById('lastUpdate').textContent =
     'Stand: ' + new Date(b.lastUpdate).toLocaleTimeString('de-DE');
@@ -392,9 +395,20 @@ function renderSuperchat(convos, err) {
   const makeCard = (c) => {
     const needsAns  = c.lastDirection === 'inbound';
     const answered  = c.lastDirection === 'outbound';
-    const timeRef   = c.lastMessageAt || c.timeWindowUntil;
-    const timeStr   = timeAgo(timeRef);
+    const timeRef   = c.lastMessageAt;
+    const timeStr   = timeRef ? timeAgo(timeRef) : '';
     const msgText   = c.lastMessage || '';
+
+    // Verbleibendes Fenster anzeigen
+    const minLeft = c.minutesLeft;
+    let windowBadge = '';
+    if (minLeft !== null) {
+      const h = Math.floor(minLeft / 60);
+      const m = minLeft % 60;
+      const label = h > 0 ? `${h}h ${m}min` : `${m}min`;
+      const urgent = minLeft < 120;
+      windowBadge = `<span style="font-size:10px;padding:1px 6px;border-radius:9999px;background:${urgent?'#7f1d1d':'#1e3a4a'};color:${urgent?'#fca5a5':'#7dd3fc'};flex-shrink:0" title="WhatsApp Fenster">⏱ ${label}</span>`;
+    }
 
     let statusDot, borderStyle, bgAvatar, msgColor;
     if (needsAns) {
@@ -436,10 +450,11 @@ function renderSuperchat(convos, err) {
             <span style="color:#f1f5f9;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.contactName}</span>
             <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
               ${badge}
-              <span style="color:#64748b;font-size:11px">${timeStr}</span>
+              ${windowBadge}
             </div>
           </div>
           ${msgPreview}
+          ${timeStr ? `<div style="color:#475569;font-size:10px;margin-top:1px">${timeStr}</div>` : ''}
         </div>
       </div>`;
   };
