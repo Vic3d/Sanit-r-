@@ -1,4 +1,5 @@
 const https = require('https');
+const { getMessage } = require('./messageStore');
 
 const API_KEY = process.env.SUPERCHAT_API_KEY || '01a180cb-9f52-4a04-985a-93d14bfb4a34';
 
@@ -35,12 +36,6 @@ async function getContact(contactId) {
   return null;
 }
 
-async function getLastMessage(conversationId) {
-  const { status, data } = await request('GET', `/v1.0/conversations/${conversationId}/messages?limit=1`);
-  if (status === 200 && data.results?.length) return data.results[0];
-  return null;
-}
-
 // Cache invalidation flag - wird von Webhook gesetzt
 let _cacheInvalid = false;
 function invalidateCache() { _cacheInvalid = true; }
@@ -53,23 +48,16 @@ async function getOpenConversations() {
 
   const conversations = data.results.slice(0, 15);
 
-  // Kontakt- und Nachrichtendaten parallel laden
+  // Kontaktdaten parallel laden
   const contactIds = [...new Set(conversations.map(c => c.contacts?.[0]?.id).filter(Boolean))];
   const contactMap = {};
-  const messageMap = {};
 
-  await Promise.all([
-    // Kontakte laden
-    ...contactIds.map(async (id) => {
+  await Promise.all(
+    contactIds.map(async (id) => {
       const c = await getContact(id);
       if (c) contactMap[id] = c;
-    }),
-    // Letzte Nachricht pro Conversation
-    ...conversations.map(async (c) => {
-      const msg = await getLastMessage(c.id);
-      if (msg) messageMap[c.id] = msg;
-    }),
-  ]);
+    })
+  );
 
   return conversations.map(c => {
     const contactId = c.contacts?.[0]?.id;
@@ -80,10 +68,11 @@ async function getOpenConversations() {
     const name = [firstName, lastName].filter(Boolean).join(' ') || 'Unbekannt';
     const phone = contact?.handles?.find(h => h.type === 'phone')?.value || '';
 
-    const lastMsg = messageMap[c.id];
-    const lastMessageBody = lastMsg?.content?.body || '';
-    const lastMessageAt = lastMsg?.created_at || c.time_window?.open_until || null;
-    const lastDirection = lastMsg?.direction || null; // 'inbound' | 'outbound'
+    // Letzte Nachricht aus Webhook-Store (wenn verfügbar)
+    const stored = getMessage(c.id);
+    const lastMessageBody = stored?.body || '';
+    const lastMessageAt = stored?.at || c.time_window?.open_until || null;
+    const lastDirection = stored?.direction || null;
 
     return {
       id: c.id,
@@ -92,6 +81,7 @@ async function getOpenConversations() {
       lastMessage: lastMessageBody,
       lastMessageAt,
       lastDirection,
+      hasWebhookData: !!stored,
       unreadCount: 0,
       status: c.status || 'open',
       assignedTo: c.assigned_users?.[0]?.email || null,
