@@ -30,6 +30,17 @@ module.exports = async (req, res) => {
   const event = req.body;
   const eventType = event?.event;
 
+  // Conversation als erledigt markieren → aus KV entfernen
+  if (eventType === 'conversation_done') {
+    const convId = event.conversation?.id;
+    if (convId) {
+      const store = getKV();
+      if (store) {
+        try { await store.del(`conv:${convId}`); } catch {}
+      }
+    }
+  }
+
   // Nachrichten-Events verarbeiten
   if (eventType === 'message_inbound' || eventType === 'message_outbound') {
     const msg = event.message;

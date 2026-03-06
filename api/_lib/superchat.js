@@ -100,9 +100,10 @@ async function fetchAllOpenTimeWindow() {
     if (pages >= 10) break;
   }
 
-  // Nur Conversations mit aktivem 24h-Fenster zurückgeben
+  // Nur Conversations mit aktivem 24h-Fenster UND nicht als "done" markiert
   const now = new Date();
   return [..._knownConvs.values()].filter(c => {
+    if (c.status === 'done') return false; // In Superchat als erledigt markiert → raus
     const until = c.time_window?.open_until;
     if (!until) return false;
     return new Date(until) > now && c.time_window?.state === 'open';
