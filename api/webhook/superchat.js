@@ -1,5 +1,20 @@
-const { invalidateCache, updateConversation } = require('../_lib/superchat');
 const { storeMessage } = require('../_lib/messageStore');
+
+// Vercel KV (Redis) — nur wenn konfiguriert
+let kv = null;
+function getKV() {
+  if (kv !== null) return kv;
+  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    kv = false; // nicht konfiguriert
+    return kv;
+  }
+  try {
+    kv = require('@vercel/kv').kv;
+  } catch {
+    kv = false;
+  }
+  return kv;
+}
 
 // Superchat Webhook Receiver
 // Superchat schickt Events hierher bei:
@@ -24,27 +39,27 @@ module.exports = async (req, res) => {
       const direction = msg.direction || (eventType === 'message_inbound' ? 'inbound' : 'outbound');
       const from = eventType === 'message_inbound' ? msg.from : null;
 
-      storeMessage(msg.conversation_id, {
+      const msgData = {
         body,
         at,
         direction,
         contactId: from?.id || null,
         identifier: from?.identifier || null,
-      });
+      };
+
+      // In-Memory Store (Fallback)
+      storeMessage(msg.conversation_id, msgData);
+
+      // Vercel KV (persistent, cross-instance) — TTL 48h
+      const store = getKV();
+      if (store) {
+        try {
+          await store.set(`conv:${msg.conversation_id}`, msgData, { ex: 48 * 3600 });
+        } catch (e) {
+          console.error('[Webhook] KV write failed:', e.message);
+        }
+      }
     }
-  }
-
-  // Cache nach relevanten Events invalidieren → nächster /api/state Call holt frische Daten
-  const relevantEvents = [
-    'message_inbound',
-    'message_outbound',
-    'conversation_opened',
-    'conversation_done',
-    'conversation_snoozed',
-  ];
-
-  if (relevantEvents.includes(eventType)) {
-    invalidateCache();
   }
 
   console.log('[Webhook]', eventType, event?.message?.conversation_id || event?.conversation?.id || '');

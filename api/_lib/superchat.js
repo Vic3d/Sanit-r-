@@ -1,6 +1,22 @@
 const https = require('https');
 const { getMessage } = require('./messageStore');
 
+// Vercel KV (persistent, cross-instance) — optional
+let kv = null;
+function getKV() {
+  if (kv !== null) return kv;
+  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    kv = false;
+    return kv;
+  }
+  try {
+    kv = require('@vercel/kv').kv;
+  } catch {
+    kv = false;
+  }
+  return kv;
+}
+
 const API_KEY = process.env.SUPERCHAT_API_KEY || '01a180cb-9f52-4a04-985a-93d14bfb4a34';
 const BASE = 'api.superchat.com';
 
@@ -130,6 +146,21 @@ async function getOpenConversations() {
     })
   );
 
+  // KV-Batch-Abfrage für alle Konversationen (persistent, cross-instance)
+  const store = getKV();
+  let kvDirections = {};
+  if (store) {
+    try {
+      const keys = openConvs.map(c => `conv:${c.id}`);
+      const values = await store.mget(...keys);
+      keys.forEach((key, i) => {
+        if (values[i]) kvDirections[openConvs[i].id] = values[i];
+      });
+    } catch (e) {
+      console.error('[Superchat] KV mget failed:', e.message);
+    }
+  }
+
   return openConvs.map(c => {
     const contactId = c.contacts?.[0]?.id;
     const contact = contactId ? contactMap[contactId] : null;
@@ -139,23 +170,26 @@ async function getOpenConversations() {
     const name = [firstName, lastName].filter(Boolean).join(' ') || contact?.handles?.[0]?.value || 'Unbekannt';
     const phone = contact?.handles?.find(h => h.type === 'phone')?.value || '';
 
-    // Letzte Nachricht aus Webhook-Store (optional, falls vorhanden)
-    const stored = getMessage(c.id);
+    // Prio 1: Vercel KV (persistent)
+    // Prio 2: In-Memory Store (selbe Instanz, Warmstart)
+    // Prio 3: Zeitfenster-Heuristik (Fallback)
+    const kvData = kvDirections[c.id] || null;
+    const memData = getMessage(c.id);
+    const stored = kvData || memData;
+
     const lastMessageBody = stored?.body || '';
     const lastMessageAt = stored?.at || null;
 
     // Wie viel Zeit noch im 24h-Fenster?
-    // Das Fenster wird NUR durch eingehende Kunden-Nachrichten zurückgesetzt.
-    // Wenn > 23h verbleiben → Kunde hat in letzter Stunde geschrieben.
     const until = c.time_window?.open_until;
     const minutesLeft = until
       ? Math.max(0, Math.round((new Date(until) - Date.now()) / 60000))
       : null;
 
-    // Richtung: Webhook-Store hat Vorrang, sonst aus Fenster ableiten
+    // Richtung bestimmen
     let lastDirection = stored?.direction || null;
     if (!lastDirection && minutesLeft !== null) {
-      // >23h verbleibend = Kunde hat eben gerade geschrieben → braucht Antwort
+      // Heuristik: >23h verbleibend → Kunde hat in letzter Stunde geschrieben
       if (minutesLeft > 1380) lastDirection = 'inbound';
     }
 
@@ -170,6 +204,7 @@ async function getOpenConversations() {
       timeWindowUntil: until,
       status: c.status || 'open',
       assignedTo: c.assigned_users?.[0]?.email || null,
+      _kvData: !!kvData, // Debug-Infos
     };
   });
 }
