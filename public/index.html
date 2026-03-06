@@ -47,7 +47,7 @@
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
     <div class="card p-4 text-center"><div id="statNeu" class="text-3xl font-bold text-red-400">–</div><div class="text-slate-400 text-xs mt-1">Neue Aufträge</div></div>
     <div class="card p-4 text-center"><div id="statLaufend" class="text-3xl font-bold text-yellow-400">–</div><div class="text-slate-400 text-xs mt-1">Laufend</div></div>
-    <div class="card p-4 text-center"><div id="statSuperchat" class="text-3xl font-bold text-sky-400">–</div><div class="text-slate-400 text-xs mt-1">Superchat</div></div>
+    <div class="card p-4 text-center"><div id="statSuperchat" class="text-3xl font-bold text-sky-400">–</div><div class="text-slate-400 text-xs mt-1">Superchat</div><div id="statSuperchatSub" class="text-xs mt-0.5 text-orange-400"></div></div>
     <div class="card p-4 text-center"><div id="statHero" class="text-3xl font-bold text-green-400">–</div><div class="text-slate-400 text-xs mt-1">Termine heute</div></div>
   </div>
 
@@ -223,7 +223,10 @@ function render(s) {
   _orders = b.orders||[];
   document.getElementById('statNeu').textContent = _orders.length;
   document.getElementById('statLaufend').textContent = all.laufend ?? '–';
-  document.getElementById('statSuperchat').textContent = sc.conversations?.length ?? '–';
+  const scConvos = sc.conversations || [];
+  const scPending = scConvos.filter(c => c.lastDirection === 'inbound').length;
+  document.getElementById('statSuperchat').textContent = scConvos.length;
+  document.getElementById('statSuperchatSub').textContent = scPending > 0 ? `${scPending} warten` : 'alle beantwortet';
   document.getElementById('statHero').textContent = h.appointments?.length ?? '–';
   if (b.lastUpdate) document.getElementById('lastUpdate').textContent =
     'Stand: ' + new Date(b.lastUpdate).toLocaleTimeString('de-DE');
@@ -366,37 +369,90 @@ function timeAgo(iso) {
 function renderSuperchat(convos, err) {
   const el = document.getElementById('superchatList');
   if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
-  if (!convos.length) { el.innerHTML=`<div class="text-slate-500 text-sm">Keine offenen Gespräche</div>`; return; }
+  if (!convos.length) { el.innerHTML=`<div class="text-green-400 text-sm py-2">✅ Alles beantwortet</div>`; return; }
 
-  // Sortieren: zuletzt schreibende zuerst
-  const sorted = [...convos].sort((a,b) => {
-    if (!a.lastMessageAt) return 1;
-    if (!b.lastMessageAt) return -1;
-    return new Date(b.lastMessageAt) - new Date(a.lastMessageAt);
-  });
+  // Sortierung:
+  // 1. Unbeantwortete zuerst (lastDirection=inbound)
+  // 2. Dann nach Aktualität (neuestes zuerst)
+  const needsReply  = convos.filter(c => c.lastDirection === 'inbound');
+  const replied     = convos.filter(c => c.lastDirection === 'outbound');
+  const unknown     = convos.filter(c => !c.lastDirection);
 
-  el.innerHTML = sorted.slice(0,10).map(c => {
-    const isInbound = c.lastDirection === 'inbound';
-    const isOutbound = c.lastDirection === 'outbound';
-    const msgPrefix = isInbound ? '← ' : isOutbound ? '→ ' : '';
-    const msgColor = isInbound ? 'text-sky-300' : 'text-slate-400';
-    const borderClass = isInbound ? 'border-l-2 border-l-sky-500' : '';
-    const timeStr = timeAgo(c.lastMessageAt);
+  const sortByTime = (a, b) => {
+    const ta = a.lastMessageAt || a.timeWindowUntil || '';
+    const tb = b.lastMessageAt || b.timeWindowUntil || '';
+    return tb.localeCompare(ta);
+  };
+  needsReply.sort(sortByTime);
+  replied.sort(sortByTime);
+  unknown.sort(sortByTime);
+
+  const allSorted = [...needsReply, ...unknown, ...replied];
+
+  const makeCard = (c) => {
+    const needsAns  = c.lastDirection === 'inbound';
+    const answered  = c.lastDirection === 'outbound';
+    const timeRef   = c.lastMessageAt || c.timeWindowUntil;
+    const timeStr   = timeAgo(timeRef);
+    const msgText   = c.lastMessage || '';
+
+    let statusDot, borderStyle, bgAvatar, msgColor;
+    if (needsAns) {
+      statusDot   = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f97316;flex-shrink:0;margin-top:4px"></span>`;
+      borderStyle = 'border-left:3px solid #f97316';
+      bgAvatar    = '#7c3a00';
+      msgColor    = '#fdba74'; // orange — Kunde hat geschrieben, wartet auf Antwort
+    } else if (answered) {
+      statusDot   = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;margin-top:4px"></span>`;
+      borderStyle = 'border-left:3px solid #1e3a28';
+      bgAvatar    = '#14532d';
+      msgColor    = '#86efac';
+    } else {
+      statusDot   = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#475569;flex-shrink:0;margin-top:4px"></span>`;
+      borderStyle = 'border-left:3px solid #334155';
+      bgAvatar    = '#334155';
+      msgColor    = '#94a3b8';
+    }
+
+    const badge = needsAns
+      ? `<span style="background:#f97316;color:#fff;font-size:10px;padding:1px 7px;border-radius:9999px;font-weight:700;flex-shrink:0">Offen</span>`
+      : answered
+      ? `<span style="background:#1a3325;color:#86efac;font-size:10px;padding:1px 7px;border-radius:9999px;flex-shrink:0">✓</span>`
+      : '';
+
+    const msgPreview = msgText
+      ? `<div style="color:${msgColor};font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${msgText}</div>`
+      : '';
+
     return `
-    <div class="flex items-start gap-2 py-2 border-b border-slate-700 last:border-0 pl-1 ${borderClass}">
-      <div class="w-8 h-8 rounded-full ${isInbound?'bg-sky-700':'bg-slate-600'} flex items-center justify-center text-sm shrink-0 font-bold">
-        ${(c.contactName||'?')[0].toUpperCase()}
-      </div>
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center justify-between gap-1 mb-0.5">
-          <span class="text-white text-sm font-medium truncate">${c.contactName}</span>
-          <span class="text-slate-500 text-xs shrink-0">${timeStr}</span>
+      <div style="display:flex;gap:8px;padding:10px 8px;border-bottom:1px solid #1e293b;${borderStyle};cursor:pointer"
+           onclick="window.open('https://app.superchat.de/conversations/${c.id}','_blank')">
+        ${statusDot}
+        <div style="width:32px;height:32px;border-radius:50%;background:${bgAvatar};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">
+          ${(c.contactName||'?')[0].toUpperCase()}
         </div>
-        <div class="${msgColor} text-xs truncate">${msgPrefix}${c.lastMessage||'–'}</div>
-        ${c.phone ? `<div class="text-slate-600 text-xs">${c.phone}</div>` : ''}
-      </div>
-    </div>`;
-  }).join('');
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+            <span style="color:#f1f5f9;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.contactName}</span>
+            <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+              ${badge}
+              <span style="color:#64748b;font-size:11px">${timeStr}</span>
+            </div>
+          </div>
+          ${msgPreview}
+        </div>
+      </div>`;
+  };
+
+  // Header-Zeile mit Zähler
+  const needsCount = needsReply.length;
+  const header = needsCount > 0
+    ? `<div style="color:#f97316;font-size:12px;font-weight:700;padding:6px 8px 4px;border-bottom:1px solid #1e293b">
+         🔔 ${needsCount} ${needsCount===1?'Gespräch wartet':'Gespräche warten'} auf Antwort
+       </div>`
+    : `<div style="color:#22c55e;font-size:12px;padding:6px 8px 4px;border-bottom:1px solid #1e293b">✅ Alles beantwortet</div>`;
+
+  el.innerHTML = header + allSorted.map(makeCard).join('');
 }
 
 // ── Hero Termine ─────────────────────────────────────────────────

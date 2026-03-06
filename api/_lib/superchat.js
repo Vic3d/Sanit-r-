@@ -74,6 +74,10 @@ async function getOpenConversations() {
     const lastMessageAt = stored?.at || c.time_window?.open_until || null;
     const lastDirection = stored?.direction || null;
 
+    // time_window: zeigt ob 24h-Fenster noch offen ist
+    const twState = c.time_window?.state || null;       // 'open' | 'closed'
+    const twUntil = c.time_window?.open_until || null;  // ISO timestamp
+
     return {
       id: c.id,
       contactName: name,
@@ -82,6 +86,8 @@ async function getOpenConversations() {
       lastMessageAt,
       lastDirection,
       hasWebhookData: !!stored,
+      timeWindowOpen: twState === 'open',
+      timeWindowUntil: twUntil,
       unreadCount: 0,
       status: c.status || 'open',
       assignedTo: c.assigned_users?.[0]?.email || null,
