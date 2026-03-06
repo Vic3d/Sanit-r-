@@ -139,17 +139,25 @@ async function getOpenConversations() {
     const name = [firstName, lastName].filter(Boolean).join(' ') || contact?.handles?.[0]?.value || 'Unbekannt';
     const phone = contact?.handles?.find(h => h.type === 'phone')?.value || '';
 
-    // Letzte Nachricht aus Webhook-Store (wenn vorhanden)
+    // Letzte Nachricht aus Webhook-Store (optional, falls vorhanden)
     const stored = getMessage(c.id);
     const lastMessageBody = stored?.body || '';
     const lastMessageAt = stored?.at || null;
-    const lastDirection = stored?.direction || null;
 
     // Wie viel Zeit noch im 24h-Fenster?
+    // Das Fenster wird NUR durch eingehende Kunden-Nachrichten zurückgesetzt.
+    // Wenn > 23h verbleiben → Kunde hat in letzter Stunde geschrieben.
     const until = c.time_window?.open_until;
     const minutesLeft = until
       ? Math.max(0, Math.round((new Date(until) - Date.now()) / 60000))
       : null;
+
+    // Richtung: Webhook-Store hat Vorrang, sonst aus Fenster ableiten
+    let lastDirection = stored?.direction || null;
+    if (!lastDirection && minutesLeft !== null) {
+      // >23h verbleibend = Kunde hat eben gerade geschrieben → braucht Antwort
+      if (minutesLeft > 1380) lastDirection = 'inbound';
+    }
 
     return {
       id: c.id,
@@ -158,7 +166,6 @@ async function getOpenConversations() {
       lastMessage: lastMessageBody,
       lastMessageAt,
       lastDirection,
-      hasWebhookData: !!stored,
       minutesLeft,
       timeWindowUntil: until,
       status: c.status || 'open',

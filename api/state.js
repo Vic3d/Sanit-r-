@@ -1,74 +1,74 @@
 const { getOrders } = require('./_lib/bohwk');
-const { getOpenConversations, checkAndResetInvalid } = require('./_lib/superchat');
+const { getOpenConversations } = require('./_lib/superchat');
 const { getTodayAppointments } = require('./_lib/hero');
 const { analyze } = require('./_lib/analyzer');
 
-// Cache für den State (überlebt Lambda-Warmstart)
-let cache = { data: null, at: 0 };
-const CACHE_TTL = 5 * 60 * 1000; // 5 Minuten
+// Cache NUR für B&O + Hero (selten ändernd)
+// Superchat wird IMMER frisch geladen (Cursor-Cache macht es schnell)
+let cache = { bohwk: null, hero: null, at: 0 };
+const CACHE_TTL = 5 * 60 * 1000; // 5 Minuten für B&O/Hero
 
-async function buildState() {
-  const results = await Promise.allSettled([
-    getOrders(),
-    getOpenConversations(),
-    getTodayAppointments(),
-  ]);
-
-  const [ordersResult, superchatResult, heroResult] = results;
-  const now = new Date().toISOString();
-
-  // B&O Aufträge
-  let bohwk = { orders: [], allOrders: {}, lastUpdate: now, error: null };
-  if (ordersResult.status === 'fulfilled') {
-    const all = ordersResult.value;
-    const newOrders = all.filter(o => o.OrderState === 1).map(o => ({ ...o, _analysis: analyze(o) }));
-    bohwk = {
-      orders: newOrders,
-      allOrders: {
-        neu: newOrders.length,
-        laufend: all.filter(o => o.OrderState === 2).length,
-        unterbrochen: all.filter(o => o.OrderState === 3).length,
-        fertig: all.filter(o => o.OrderState === 4).length,
-      },
-      lastUpdate: now, error: null
-    };
-  } else {
-    bohwk.error = ordersResult.reason?.message || 'Unbekannter Fehler';
-  }
-
-  // Superchat
-  let superchat = { conversations: [], lastUpdate: now, error: null };
-  if (superchatResult.status === 'fulfilled') {
-    superchat.conversations = superchatResult.value;
-  } else {
-    superchat.error = superchatResult.reason?.message || 'Fehler';
-  }
-
-  // Hero
-  let hero = { appointments: [], lastUpdate: now, error: null };
-  if (heroResult.status === 'fulfilled') {
-    hero.appointments = heroResult.value;
-  } else {
-    hero.error = heroResult.reason?.message || 'Fehler';
-  }
-
-  return { bohwk, superchat, hero };
-}
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
 
-  const force = req.query.refresh === '1' || checkAndResetInvalid();
-
-  if (!force && cache.data && (Date.now() - cache.at) < CACHE_TTL) {
-    return res.json({ ...cache.data, cached: true });
-  }
+  const force = req.query.refresh === '1';
+  const now = Date.now();
+  const cacheValid = !force && cache.bohwk && (now - cache.at) < CACHE_TTL;
 
   try {
-    const state = await buildState();
-    cache = { data: state, at: Date.now() };
-    res.json(state);
+    // Superchat IMMER frisch (Cursor-Cache macht es schnell, ~1-2 API-Calls)
+    const superchatPromise = getOpenConversations();
+
+    // B&O + Hero aus Cache oder neu laden
+    let bohwk, hero;
+    if (cacheValid) {
+      bohwk = cache.bohwk;
+      hero = cache.hero;
+    } else {
+      const [ordersResult, heroResult] = await Promise.allSettled([
+        getOrders(),
+        getTodayAppointments(),
+      ]);
+      const timestamp = new Date().toISOString();
+
+      if (ordersResult.status === 'fulfilled') {
+        const all = ordersResult.value;
+        const newOrders = all.filter(o => o.OrderState === 1).map(o => ({ ...o, _analysis: analyze(o) }));
+        bohwk = {
+          orders: newOrders,
+          allOrders: {
+            neu: newOrders.length,
+            laufend: all.filter(o => o.OrderState === 2).length,
+            unterbrochen: all.filter(o => o.OrderState === 3).length,
+            fertig: all.filter(o => o.OrderState === 4).length,
+          },
+          lastUpdate: timestamp, error: null
+        };
+      } else {
+        bohwk = { orders: [], allOrders: {}, lastUpdate: timestamp, error: ordersResult.reason?.message || 'Fehler' };
+      }
+
+      if (heroResult.status === 'fulfilled') {
+        hero = { appointments: heroResult.value, lastUpdate: timestamp, error: null };
+      } else {
+        hero = { appointments: [], lastUpdate: timestamp, error: heroResult.reason?.message || 'Fehler' };
+      }
+
+      cache = { bohwk, hero, at: now };
+    }
+
+    // Superchat-Ergebnis abwarten
+    let superchat;
+    try {
+      const conversations = await superchatPromise;
+      superchat = { conversations, lastUpdate: new Date().toISOString(), error: null };
+    } catch (err) {
+      superchat = { conversations: [], lastUpdate: new Date().toISOString(), error: err.message };
+    }
+
+    res.json({ bohwk, superchat, hero, cached: cacheValid });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
