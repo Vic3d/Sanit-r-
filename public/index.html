@@ -224,12 +224,12 @@ function render(s) {
   document.getElementById('statNeu').textContent = _orders.length;
   document.getElementById('statLaufend').textContent = all.laufend ?? '–';
   const scConvos = sc.conversations || [];
-  const scPending = scConvos.filter(c => c.lastDirection === 'inbound').length;
+  const scPending = scConvos.filter(c => c.unread).length;
   const scUrgent  = scConvos.filter(c => c.minutesLeft !== null && c.minutesLeft < 120).length;
   document.getElementById('statSuperchat').textContent = scConvos.length;
   document.getElementById('statSuperchatSub').textContent =
-    scUrgent > 0 ? `${scUrgent} läuft ab` :
-    scPending > 0 ? `${scPending} warten` : 'alle beantwortet';
+    scUrgent > 0  ? `${scUrgent} läuft ab` :
+    scPending > 0 ? `${scPending} ungelesen` : 'alles gelesen';
   document.getElementById('statHero').textContent = h.appointments?.length ?? '–';
   if (b.lastUpdate) document.getElementById('lastUpdate').textContent =
     'Stand: ' + new Date(b.lastUpdate).toLocaleTimeString('de-DE');
@@ -374,27 +374,24 @@ function renderSuperchat(convos, err) {
   if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
   if (!convos.length) { el.innerHTML=`<div class="text-green-400 text-sm py-2">✅ Alles beantwortet</div>`; return; }
 
-  // Sortierung:
-  // 1. Unbeantwortete zuerst (lastDirection=inbound)
-  // 2. Dann nach Aktualität (neuestes zuerst)
-  const needsReply  = convos.filter(c => c.lastDirection === 'inbound');
-  const replied     = convos.filter(c => c.lastDirection === 'outbound');
-  const unknown     = convos.filter(c => !c.lastDirection);
+  // Sortierung: ungelesene zuerst (= Superchat roter Badge), dann nach Zeitfenster
+  // (Backend liefert bereits so sortiert, Frontend macht nochmal zur Sicherheit)
+  const needsReply  = convos.filter(c => c.unread);
+  const read        = convos.filter(c => !c.unread);
 
   const sortByTime = (a, b) => {
-    const ta = a.lastMessageAt || a.timeWindowUntil || '';
-    const tb = b.lastMessageAt || b.timeWindowUntil || '';
+    const ta = a.timeWindowUntil || '';
+    const tb = b.timeWindowUntil || '';
     return tb.localeCompare(ta);
   };
   needsReply.sort(sortByTime);
-  replied.sort(sortByTime);
-  unknown.sort(sortByTime);
+  read.sort(sortByTime);
 
-  const allSorted = [...needsReply, ...unknown, ...replied];
+  const allSorted = [...needsReply, ...read];
 
   const makeCard = (c) => {
-    const needsAns  = c.lastDirection === 'inbound';
-    const answered  = c.lastDirection === 'outbound';
+    const needsAns  = c.unread;   // ungelesen = wie roter Badge in Superchat
+    const answered  = !c.unread;
     const timeRef   = c.lastMessageAt;
     const timeStr   = timeRef ? timeAgo(timeRef) : '';
     const msgText   = c.lastMessage || '';
@@ -429,9 +426,7 @@ function renderSuperchat(convos, err) {
     }
 
     const badge = needsAns
-      ? `<span style="background:#f97316;color:#fff;font-size:10px;padding:1px 7px;border-radius:9999px;font-weight:700;flex-shrink:0">Offen</span>`
-      : answered
-      ? `<span style="background:#1a3325;color:#86efac;font-size:10px;padding:1px 7px;border-radius:9999px;flex-shrink:0">✓</span>`
+      ? `<span style="background:#f97316;color:#fff;font-size:10px;padding:1px 7px;border-radius:9999px;font-weight:700;flex-shrink:0">● Neu</span>`
       : '';
 
     const msgPreview = msgText
@@ -463,9 +458,9 @@ function renderSuperchat(convos, err) {
   const needsCount = needsReply.length;
   const header = needsCount > 0
     ? `<div style="color:#f97316;font-size:12px;font-weight:700;padding:6px 8px 4px;border-bottom:1px solid #1e293b">
-         🔔 ${needsCount} ${needsCount===1?'Gespräch wartet':'Gespräche warten'} auf Antwort
+         🔔 ${needsCount} ${needsCount===1?'ungelesene Nachricht':'ungelesene Nachrichten'}
        </div>`
-    : `<div style="color:#22c55e;font-size:12px;padding:6px 8px 4px;border-bottom:1px solid #1e293b">✅ Alles beantwortet</div>`;
+    : `<div style="color:#22c55e;font-size:12px;padding:6px 8px 4px;border-bottom:1px solid #1e293b">✅ Alles gelesen</div>`;
 
   el.innerHTML = header + allSorted.map(makeCard).join('');
 }

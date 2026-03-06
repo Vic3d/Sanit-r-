@@ -123,29 +123,43 @@ function updateConversation(conversationId, update) {
   }
 }
 
+// ── Ungelesene Conversations (direkt von API) ─────────────────────
+async function fetchUnreadIds() {
+  try {
+    const { status, data } = await request('GET', '/v1.0/conversations?limit=100&unread=true');
+    if (status !== 200 || !data.results) return new Set();
+    return new Set(data.results.map(c => c.id));
+  } catch {
+    return new Set();
+  }
+}
+
 // ── Hauptfunktion ─────────────────────────────────────────────────
 async function getOpenConversations() {
   const openConvs = await fetchAllOpenTimeWindow();
 
   if (!openConvs.length) return [];
 
-  // Sortieren: neuestes 24h-Fenster zuletzt (= älteste Conversation zuerst)
-  // → nein, wir wollen neuestes ZUERST (kürzlich geschrieben)
-  openConvs.sort((a, b) => {
-    const ta = a.time_window?.open_until || '';
-    const tb = b.time_window?.open_until || '';
-    return tb.localeCompare(ta); // neueste zuerst
-  });
-
-  // Kontaktdaten parallel laden
+  // Ungelesene IDs + Kontaktdaten parallel laden
   const contactIds = [...new Set(openConvs.map(c => c.contacts?.[0]?.id).filter(Boolean))];
   const contactMap = {};
-  await Promise.all(
-    contactIds.map(async (id) => {
+  const [unreadIds] = await Promise.all([
+    fetchUnreadIds(),
+    ...contactIds.map(async (id) => {
       const c = await getContact(id);
       if (c) contactMap[id] = c;
     })
-  );
+  ]);
+
+  // Sortieren: ungelesene zuerst, dann nach Zeitfenster (neueste zuerst)
+  openConvs.sort((a, b) => {
+    const aUnread = unreadIds.has(a.id) ? 1 : 0;
+    const bUnread = unreadIds.has(b.id) ? 1 : 0;
+    if (bUnread !== aUnread) return bUnread - aUnread; // ungelesene oben
+    const ta = a.time_window?.open_until || '';
+    const tb = b.time_window?.open_until || '';
+    return tb.localeCompare(ta);
+  });
 
   // KV-Batch-Abfrage für alle Konversationen (persistent, cross-instance)
   const store = getKV();
@@ -187,11 +201,13 @@ async function getOpenConversations() {
       ? Math.max(0, Math.round((new Date(until) - Date.now()) / 60000))
       : null;
 
-    // Richtung bestimmen
+    // Ungelesen = direkt von Superchat API (exakt wie der rote Badge in der App)
+    const unread = unreadIds.has(c.id);
+
+    // lastDirection: KV/Webhook hat Vorrang, Fallback: unread = inbound
     let lastDirection = stored?.direction || null;
-    if (!lastDirection && minutesLeft !== null) {
-      // Heuristik: >23h verbleibend → Kunde hat in letzter Stunde geschrieben
-      if (minutesLeft > 1380) lastDirection = 'inbound';
+    if (!lastDirection) {
+      lastDirection = unread ? 'inbound' : null;
     }
 
     return {
@@ -201,11 +217,11 @@ async function getOpenConversations() {
       lastMessage: lastMessageBody,
       lastMessageAt,
       lastDirection,
+      unread, // true = noch nicht angeschaut (roter Badge in Superchat)
       minutesLeft,
       timeWindowUntil: until,
       status: c.status || 'open',
       assignedTo: c.assigned_users?.[0]?.email || null,
-      _kvData: !!kvData, // Debug-Infos
     };
   });
 }
