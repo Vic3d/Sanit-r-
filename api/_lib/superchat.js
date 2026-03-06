@@ -123,16 +123,7 @@ function updateConversation(conversationId, update) {
   }
 }
 
-// ── Ungelesene Conversations (direkt von API) ─────────────────────
-async function fetchUnreadIds() {
-  try {
-    const { status, data } = await request('GET', '/v1.0/conversations?limit=100&unread=true');
-    if (status !== 200 || !data.results) return new Set();
-    return new Set(data.results.map(c => c.id));
-  } catch {
-    return new Set();
-  }
-}
+
 
 // ── Hauptfunktion ─────────────────────────────────────────────────
 async function getOpenConversations() {
@@ -140,26 +131,15 @@ async function getOpenConversations() {
 
   if (!openConvs.length) return [];
 
-  // Ungelesene IDs + Kontaktdaten parallel laden
+  // Kontaktdaten parallel laden
   const contactIds = [...new Set(openConvs.map(c => c.contacts?.[0]?.id).filter(Boolean))];
   const contactMap = {};
-  const [unreadIds] = await Promise.all([
-    fetchUnreadIds(),
-    ...contactIds.map(async (id) => {
+  await Promise.all(
+    contactIds.map(async (id) => {
       const c = await getContact(id);
       if (c) contactMap[id] = c;
     })
-  ]);
-
-  // Sortieren: ungelesene zuerst, dann nach Zeitfenster (neueste zuerst)
-  openConvs.sort((a, b) => {
-    const aUnread = unreadIds.has(a.id) ? 1 : 0;
-    const bUnread = unreadIds.has(b.id) ? 1 : 0;
-    if (bUnread !== aUnread) return bUnread - aUnread; // ungelesene oben
-    const ta = a.time_window?.open_until || '';
-    const tb = b.time_window?.open_until || '';
-    return tb.localeCompare(ta);
-  });
+  );
 
   // KV-Batch-Abfrage für alle Konversationen (persistent, cross-instance)
   const store = getKV();
@@ -175,6 +155,16 @@ async function getOpenConversations() {
       console.error('[Superchat] KV mget failed:', e.message);
     }
   }
+
+  // Sortieren: inbound (unbeantwortet) zuerst, dann nach Zeitfenster
+  openConvs.sort((a, b) => {
+    const aInbound = (kvDirections[a.id]?.direction || getMessage(a.id)?.direction) === 'inbound' ? 1 : 0;
+    const bInbound = (kvDirections[b.id]?.direction || getMessage(b.id)?.direction) === 'inbound' ? 1 : 0;
+    if (bInbound !== aInbound) return bInbound - aInbound;
+    const ta = a.time_window?.open_until || '';
+    const tb = b.time_window?.open_until || '';
+    return tb.localeCompare(ta);
+  });
 
   return openConvs.map(c => {
     const contactId = c.contacts?.[0]?.id;
@@ -201,14 +191,12 @@ async function getOpenConversations() {
       ? Math.max(0, Math.round((new Date(until) - Date.now()) / 60000))
       : null;
 
-    // Ungelesen = direkt von Superchat API (exakt wie der rote Badge in der App)
-    const unread = unreadIds.has(c.id);
-
-    // lastDirection: KV/Webhook hat Vorrang, Fallback: unread = inbound
-    let lastDirection = stored?.direction || null;
-    if (!lastDirection) {
-      lastDirection = unread ? 'inbound' : null;
-    }
+    // Richtung aus KV (Webhook-Daten) — einzige zuverlässige Quelle
+    // inbound  = Kunde hat zuletzt geschrieben → "Neu" Badge
+    // outbound = Josh hat zuletzt geantwortet  → kein Badge
+    // null     = unbekannt (noch kein Webhook seit Setup) → kein Badge
+    const lastDirection = stored?.direction || null;
+    const unread = lastDirection === 'inbound';
 
     return {
       id: c.id,
@@ -217,7 +205,7 @@ async function getOpenConversations() {
       lastMessage: lastMessageBody,
       lastMessageAt,
       lastDirection,
-      unread, // true = noch nicht angeschaut (roter Badge in Superchat)
+      unread,
       minutesLeft,
       timeWindowUntil: until,
       status: c.status || 'open',
