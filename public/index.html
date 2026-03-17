@@ -1,546 +1,563 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Josh Dashboard – Gebr. Schutzeichel</title>
+  <title>Schutzeichel Backoffice</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            dark: { bg: '#0f172a', card: '#1e293b', border: '#334155', hover: '#2d3a4d' },
+          }
+        }
+      }
+    }
+  </script>
   <style>
-    body { background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; }
-    .badge-HOCH { background: #ef4444; color: white; }
-    .badge-MITTEL { background: #f97316; color: white; }
-    .badge-NORMAL { background: #22c55e; color: white; }
-    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.5} }
-    .pulse { animation: pulse 1.5s infinite; }
-    .spinner { border:3px solid #334155; border-top-color:#38bdf8; border-radius:50%; width:18px; height:18px; animation: spin .8s linear infinite; display:inline-block; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .tech-card { background: #162032; border: 2px solid #1e3a5f; border-radius: 10px; transition: border-color .2s; }
-    .tech-card:hover { border-color: #3b82f6; }
-    .tech-card.nord { border-color: #3b1a1a; }
-    .tech-card.nord:hover { border-color: #dc2626; }
-    .workload-bar { height: 6px; border-radius: 3px; background: #334155; overflow: hidden; }
-    .workload-fill { height: 100%; border-radius: 3px; transition: width .4s; }
-    .assign-menu { display:none; position:absolute; z-index:50; top:100%; right:0; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:180px; box-shadow:0 4px 20px rgba(0,0,0,.4); }
-    .assign-menu.open { display:block; }
-    .order-card.assigned { opacity: 0.65; }
+    body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .tab-active { background: #334155; color: #f1f5f9; }
+    .tab-inactive { color: #94a3b8; }
+    .tab-inactive:hover { color: #cbd5e1; background: #1e293b; }
+    .badge-nord { background: #991b1b; color: #fca5a5; }
+    .badge-ost { background: #1e3a5f; color: #93c5fd; }
+    .badge-contacted { background: #065f46; color: #6ee7b7; }
+    .badge-open { background: #991b1b; color: #fca5a5; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
+    .expand-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .expand-content.open { max-height: 2000px; }
+    .progress-bar { background: #334155; border-radius: 9999px; height: 8px; }
+    .progress-fill { border-radius: 9999px; height: 8px; transition: width 0.5s ease; }
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .loading-dot { animation: pulse-dot 1.5s infinite; }
+    input[type="text"] { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; }
+    input[type="text"]::placeholder { color: #64748b; }
+    input[type="text"]:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.2); }
   </style>
 </head>
-<body class="min-h-screen p-4 md:p-6">
-
-  <!-- Header -->
-  <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
-    <div>
-      <h1 class="text-2xl font-bold text-white">🔧 Josh Dashboard</h1>
-      <p class="text-slate-400 text-sm">Gebr. Schutzeichel – Disposition</p>
-    </div>
-    <div class="flex items-center gap-3">
-      <span id="lastUpdate" class="text-slate-500 text-xs"></span>
-      <button onclick="refresh()" id="refreshBtn"
-        class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
-        ↻ Aktualisieren
-      </button>
-    </div>
-  </div>
-
-  <!-- Stats -->
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-    <div class="card p-4 text-center"><div id="statNeu" class="text-3xl font-bold text-red-400">–</div><div class="text-slate-400 text-xs mt-1">Neue Aufträge</div></div>
-    <div class="card p-4 text-center"><div id="statLaufend" class="text-3xl font-bold text-yellow-400">–</div><div class="text-slate-400 text-xs mt-1">Laufend</div></div>
-    <div class="card p-4 text-center"><div id="statSuperchat" class="text-3xl font-bold text-sky-400">–</div><div class="text-slate-400 text-xs mt-1">Superchat</div><div id="statSuperchatSub" class="text-xs mt-0.5 text-orange-400"></div></div>
-    <div class="card p-4 text-center"><div id="statHero" class="text-3xl font-bold text-green-400">–</div><div class="text-slate-400 text-xs mt-1">Termine heute</div></div>
-  </div>
-
-  <!-- Monteur-Auslastung -->
-  <div class="card p-4 mb-5">
-    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">👷 Monteur-Auslastung</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-      <!-- Nord -->
-      <div>
-        <div class="flex items-center gap-2 mb-2">
-          <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-          <span class="text-red-400 font-semibold text-sm">Distrikt Nord</span>
-          <span class="text-slate-500 text-xs">(Osnabrück · Münster · Bielefeld)</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div id="tech-158931" class="tech-card nord p-3">
-            <div class="text-white text-sm font-medium truncate">Ramiz Z.</div>
-            <div class="text-slate-400 text-xs mb-2">Zoronjic</div>
-            <div class="workload-bar mb-1"><div id="wb-158931" class="workload-fill bg-red-500" style="width:0%"></div></div>
-            <div class="flex justify-between text-xs">
-              <span id="wl-jobs-158931" class="text-slate-300">0 Jobs</span>
-              <span id="wl-hours-158931" class="text-slate-400">0h</span>
-            </div>
-          </div>
-          <div id="tech-158934" class="tech-card nord p-3">
-            <div class="text-white text-sm font-medium truncate">Nico K.</div>
-            <div class="text-slate-400 text-xs mb-2">Koussios</div>
-            <div class="workload-bar mb-1"><div id="wb-158934" class="workload-fill bg-red-500" style="width:0%"></div></div>
-            <div class="flex justify-between text-xs">
-              <span id="wl-jobs-158934" class="text-slate-300">0 Jobs</span>
-              <span id="wl-hours-158934" class="text-slate-400">0h</span>
-            </div>
-          </div>
-        </div>
+<body class="min-h-screen">
+  <div id="app" class="max-w-7xl mx-auto px-4 py-4">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">🔧</span>
+        <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
-
-      <!-- Ost -->
-      <div>
-        <div class="flex items-center gap-2 mb-2">
-          <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-          <span class="text-blue-400 font-semibold text-sm">Distrikt Ost</span>
-          <span class="text-slate-500 text-xs">(Dortmund · Iserlohn · Hemer · Siegen)</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div id="tech-158932" class="tech-card p-3">
-            <div class="text-white text-sm font-medium truncate">Adem D.</div>
-            <div class="text-slate-400 text-xs mb-2">Dedeic</div>
-            <div class="workload-bar mb-1"><div id="wb-158932" class="workload-fill bg-blue-500" style="width:0%"></div></div>
-            <div class="flex justify-between text-xs">
-              <span id="wl-jobs-158932" class="text-slate-300">0 Jobs</span>
-              <span id="wl-hours-158932" class="text-slate-400">0h</span>
-            </div>
-          </div>
-          <div id="tech-158936" class="tech-card p-3">
-            <div class="text-white text-sm font-medium truncate">Nicolai W.</div>
-            <div class="text-slate-400 text-xs mb-2">Walczak</div>
-            <div class="workload-bar mb-1"><div id="wb-158936" class="workload-fill bg-blue-500" style="width:0%"></div></div>
-            <div class="flex justify-between text-xs">
-              <span id="wl-jobs-158936" class="text-slate-300">0 Jobs</span>
-              <span id="wl-hours-158936" class="text-slate-400">0h</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- Main Grid: Aufträge + Sidebar -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-    <!-- Aufträge -->
-    <div class="lg:col-span-2">
-      <div class="card p-4">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold text-white">📋 Neue B&O Aufträge</h2>
-          <span id="bohwkErr" class="text-red-400 text-xs"></span>
-        </div>
-        <div id="ordersList"><div class="flex gap-2 items-center text-slate-400 py-6 justify-center"><div class="spinner"></div><span>Lade...</span></div></div>
+      <div class="flex items-center gap-4">
+        <span id="lastUpdate" class="text-sm text-slate-400"></span>
+        <button onclick="loadData(true)" id="refreshBtn"
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+          Aktualisieren
+        </button>
       </div>
     </div>
 
-    <!-- Sidebar -->
-    <div class="space-y-4">
-      <div class="card p-4">
-        <h2 class="text-lg font-semibold text-white mb-3">💬 Superchat</h2>
-        <div id="superchatList"><div class="text-slate-500 text-sm">Lade...</div></div>
+    <!-- Stats -->
+    <div id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div class="card p-4 text-center">
+        <div class="text-2xl font-bold text-white" id="statTotal">-</div>
+        <div class="text-sm text-slate-400">Offen</div>
       </div>
-      <div class="card p-4">
-        <h2 class="text-lg font-semibold text-white mb-3">📅 Termine heute</h2>
-        <div id="heroList"><div class="text-slate-500 text-sm">Lade...</div></div>
+      <div class="card p-4 text-center">
+        <div class="text-2xl font-bold text-red-400" id="statNeedContact">-</div>
+        <div class="text-sm text-slate-400">Anschreiben</div>
       </div>
-      <div class="card p-4">
-        <h2 class="text-lg font-semibold text-white mb-3">✅ Aufgaben (Victor)</h2>
-        <div id="tasksList"><div class="text-slate-500 text-sm">Lade...</div></div>
+      <div class="card p-4 text-center">
+        <div class="text-2xl font-bold text-green-400" id="statContacted">-</div>
+        <div class="text-sm text-slate-400">Kontaktiert</div>
       </div>
+      <div class="card p-4 text-center">
+        <div class="text-2xl font-bold text-blue-400" id="statGroups">-</div>
+        <div class="text-sm text-slate-400">Adress-Gruppen</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 mb-4 overflow-x-auto pb-1">
+      <button onclick="switchTab('orders')" id="tab-orders"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-active">📋 Alle Aufträge</button>
+      <button onclick="switchTab('contact')" id="tab-contact"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📞 Anschreiben</button>
+      <button onclick="switchTab('routes')" id="tab-routes"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">🗺️ Routen</button>
+      <button onclick="switchTab('techs')" id="tab-techs"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">👷 Monteure</button>
+    </div>
+
+    <!-- Tab Content -->
+    <div id="content-orders"></div>
+    <div id="content-contact" class="hidden"></div>
+    <div id="content-routes" class="hidden"></div>
+    <div id="content-techs" class="hidden"></div>
+
+    <!-- Loading -->
+    <div id="loading" class="text-center py-16">
+      <div class="flex justify-center gap-2 mb-4">
+        <div class="w-3 h-3 bg-blue-500 rounded-full loading-dot"></div>
+        <div class="w-3 h-3 bg-blue-500 rounded-full loading-dot" style="animation-delay:0.3s"></div>
+        <div class="w-3 h-3 bg-blue-500 rounded-full loading-dot" style="animation-delay:0.6s"></div>
+      </div>
+      <p class="text-slate-400">Daten werden geladen…</p>
     </div>
   </div>
 
 <script>
-// ── Monteur-Konfig ──────────────────────────────────────────────
-const TECHNICIANS = {
-  nord: [
-    { id: 158931, name: 'Ramiz Zoronjic',  short: 'Ramiz Z.',   district: 'Nord' },
-    { id: 158934, name: 'Nico Koussios',   short: 'Nico K.',    district: 'Nord' }
-  ],
-  ost: [
-    { id: 158932, name: 'Adem Dedeic',     short: 'Adem D.',    district: 'Ost'  },
-    { id: 158936, name: 'Nicolai Walczak', short: 'Nicolai W.', district: 'Ost'  }
-  ]
-};
-const ALL_TECHS = [...TECHNICIANS.nord, ...TECHNICIANS.ost];
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let DATA = null;
+let currentTab = 'orders';
+let searchQuery = '';
+let sortField = 'date';
+let sortDir = 'desc';
 
-// Zuweisung im localStorage speichern (per Tag)
-const TODAY = new Date().toISOString().slice(0,10);
-const STORE_KEY = `assignments-${TODAY}`;
-let assignments = JSON.parse(localStorage.getItem(STORE_KEY)||'{}');
-
-function saveAssignments() { localStorage.setItem(STORE_KEY, JSON.stringify(assignments)); }
-
-// Geschätzte Stunden aus time-String
-function parseHours(t) {
-  if (!t) return 1;
-  const m = t.match(/(\d+)\s*[-–]\s*(\d+)/);
-  if (m) return (parseInt(m[1])+parseInt(m[2]))/2;
-  const s = t.match(/^(\d+)/);
-  return s ? parseInt(s[1]) : 1;
-}
-
-// ── Auslastung berechnen + anzeigen ─────────────────────────────
-function updateWorkload(orders) {
-  const techOrders = {};
-  ALL_TECHS.forEach(t => techOrders[t.id] = []);
-  orders.forEach(o => {
-    const tid = assignments[o.ID?.SourceId];
-    if (tid && techOrders[tid]) techOrders[tid].push(o);
-  });
-
-  const maxHours = 8;
-  ALL_TECHS.forEach(t => {
-    const myOrders = techOrders[t.id];
-    const jobs = myOrders.length;
-    const hours = myOrders.reduce((sum, o) => sum + parseHours(o._analysis?.time), 0);
-    const pct = Math.min(100, Math.round((hours / maxHours) * 100));
-    const color = pct > 80 ? '#ef4444' : pct > 50 ? '#f97316' : t.district === 'Nord' ? '#dc2626' : '#3b82f6';
-    const el = document.getElementById(`wb-${t.id}`);
-    if (el) { el.style.width = pct+'%'; el.style.background = color; }
-    const jEl = document.getElementById(`wl-jobs-${t.id}`);
-    if (jEl) jEl.textContent = jobs + (jobs===1?' Job':' Jobs');
-    const hEl = document.getElementById(`wl-hours-${t.id}`);
-    if (hEl) hEl.textContent = hours > 0 ? `~${hours}h` : '0h';
-  });
-}
-
-// ── State laden ─────────────────────────────────────────────────
-let _orders = [];
-
-async function loadState(force=false) {
-  try {
-    const r = await fetch(force ? '/api/state?refresh=1' : '/api/state');
-    const s = await r.json();
-    render(s);
-  } catch(e) { console.error(e); }
-}
-
-async function refresh() {
+// ═══════════════════════════════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════════════════════════════
+async function loadData(force = false) {
   const btn = document.getElementById('refreshBtn');
-  btn.innerHTML = '<div class="spinner"></div>&nbsp;Lädt...';
+  btn.textContent = '⏳ Laden…';
   btn.disabled = true;
-  await loadState(true);
-  btn.innerHTML = '↻ Aktualisieren';
-  btn.disabled = false;
-}
 
-function render(s) {
-  const b=s.bohwk||{}, sc=s.superchat||{}, h=s.hero||{}, tk=s.tasks||{}, all=b.allOrders||{};
-  _orders = b.orders||[];
-  document.getElementById('statNeu').textContent = _orders.length;
-  document.getElementById('statLaufend').textContent = all.laufend ?? '–';
-  const scConvos = sc.conversations || [];
-  const scPending = scConvos.filter(c => c.unread).length;
-  const scUrgent  = scConvos.filter(c => c.minutesLeft !== null && c.minutesLeft < 120).length;
-  document.getElementById('statSuperchat').textContent = scConvos.length;
-  document.getElementById('statSuperchatSub').textContent =
-    scUrgent > 0  ? `${scUrgent} läuft ab` :
-    scPending > 0 ? `${scPending} ungelesen` : 'alles gelesen';
-  document.getElementById('statHero').textContent = h.appointments?.length ?? '–';
-  if (b.lastUpdate) document.getElementById('lastUpdate').textContent =
-    'Stand: ' + new Date(b.lastUpdate).toLocaleTimeString('de-DE');
-  renderOrders(_orders, b.error);
-  renderSuperchat(sc.conversations||[], sc.error);
-  renderHero(h.appointments||[], h.error);
-  renderTasks(tk.items||[], tk.error);
-  updateWorkload(_orders);
-}
-
-// ── Aufträge rendern ─────────────────────────────────────────────
-function renderOrders(orders, err) {
-  const el = document.getElementById('ordersList');
-  document.getElementById('bohwkErr').textContent = err||'';
-  if (!orders.length) {
-    el.innerHTML = err
-      ? `<div class="text-red-400 text-sm py-2">${err}</div>`
-      : `<div class="text-green-400 py-6 text-center text-sm">✅ Keine neuen Aufträge</div>`;
-    return;
+  try {
+    const url = '/api/state' + (force ? '?refresh=1' : '');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    DATA = await res.json();
+    document.getElementById('loading').classList.add('hidden');
+    updateStats();
+    renderCurrentTab();
+    updateLastUpdate();
+  } catch (err) {
+    console.error('Laden fehlgeschlagen:', err);
+    document.getElementById('loading').innerHTML =
+      `<p class="text-red-400">❌ Fehler beim Laden: ${err.message}</p>
+       <button onclick="loadData(true)" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Erneut versuchen</button>`;
+  } finally {
+    btn.textContent = 'Aktualisieren';
+    btn.disabled = false;
   }
-  el.innerHTML = orders.map(o => {
-    const a = o._analysis||{};
-    const id = o.ID?.SourceId;
-    const cc = o.CustomerCenter||'';
-    const isNord = cc.includes('Nord');
-    const isOst  = cc.includes('Ost');
-    const bc = {HOCH:'border-red-700 bg-red-950/20',MITTEL:'border-orange-700',NORMAL:'border-slate-700'}[a.priority]||'border-slate-700';
-    const dist = (o.DisturbanceType||'').replace(/^\d+ /,'');
-    const notes = (a.notes||[]).map(n=>`<span class="text-yellow-300 text-xs">${n}</span>`).join(' · ');
-    const distBadge = isNord
-      ? `<span style="background:#dc2626;color:#fff;font-size:10px;padding:1px 8px;border-radius:9999px;font-weight:700">🔴 Nord</span>`
-      : isOst
-      ? `<span style="background:#2563eb;color:#fff;font-size:10px;padding:1px 8px;border-radius:9999px;font-weight:700">🔵 Ost</span>`
-      : '';
+}
 
-    // Zugewiesener Techniker
-    const assignedId = assignments[id];
-    const assignedTech = ALL_TECHS.find(t => t.id == assignedId);
-    const assignedLabel = assignedTech
-      ? `<span class="text-green-400 text-xs font-medium">✓ ${assignedTech.short}</span>`
-      : `<span class="text-slate-500 text-xs">Nicht zugewiesen</span>`;
+function updateLastUpdate() {
+  const el = document.getElementById('lastUpdate');
+  const now = new Date();
+  el.textContent = `Letzte: ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+}
 
-    // Techniker-Optionen für diesen Distrikt
-    const techOptions = (isNord ? TECHNICIANS.nord : isOst ? TECHNICIANS.ost : ALL_TECHS)
-      .map(t => `<button onclick="assignOrder(${id}, ${t.id}, event)"
-        class="w-full text-left px-3 py-2 text-sm hover:bg-slate-700 flex items-center justify-between ${assignments[id]==t.id?'text-green-400':'text-slate-200'}">
-        <span>${t.name}</span>
-        ${assignments[id]==t.id?'<span class="text-xs">✓</span>':''}
-      </button>`).join('');
+function updateStats() {
+  if (!DATA?.stats) return;
+  document.getElementById('statTotal').textContent = DATA.stats.total;
+  document.getElementById('statNeedContact').textContent = DATA.stats.needContact;
+  document.getElementById('statContacted').textContent = DATA.stats.contacted;
+  document.getElementById('statGroups').textContent = DATA.stats.addressGroups;
+}
 
-    const isAssigned = !!assignedTech;
+// ═══════════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════════
+function switchTab(tab) {
+  currentTab = tab;
+  ['orders', 'contact', 'routes', 'techs'].forEach(t => {
+    document.getElementById('content-' + t).classList.toggle('hidden', t !== tab);
+    document.getElementById('tab-' + t).className =
+      `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${t === tab ? 'tab-active' : 'tab-inactive'}`;
+  });
+  renderCurrentTab();
+}
 
-    return `<div class="border ${bc} rounded-lg p-4 mb-3 order-card ${isAssigned?'assigned':''}" id="order-${id}">
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex-1 min-w-0">
-          <div class="flex flex-wrap items-center gap-2 mb-1">
-            ${a.emergency?'<span class="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full font-bold pulse">🚨 NOTFALL</span>':''}
-            <span class="badge-${a.priority||'NORMAL'} text-xs px-2 py-0.5 rounded-full">${a.priority||'?'}</span>
-            ${distBadge}
-            <span class="text-white font-semibold text-sm">${o.City}, ${o.Street}</span>
-          </div>
-          <div class="text-slate-300 text-sm">${o.Craft} – ${o.Damage}</div>
-          <div class="text-slate-400 text-xs">${dist}</div>
-          ${o.Remarks?`<div class="text-slate-500 text-xs mt-1 line-clamp-1">${o.Remarks.substring(0,100)}</div>`:''}
-          ${notes?`<div class="mt-1">${notes}</div>`:''}
-        </div>
-        <div class="text-right shrink-0">
-          <div class="text-green-400 font-bold text-sm">${a.priceRange||'–'}</div>
-          <div class="text-slate-400 text-xs">⏱ ${a.time||'–'}</div>
-          <div class="text-slate-600 text-xs">#${id}</div>
-        </div>
-      </div>
-      <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-700 gap-2 flex-wrap">
-        <div class="flex items-center gap-3">
-          <span class="text-xs text-slate-400">👤 ${o.Renter||'–'} · 📞 ${(o.Telephone||'–')}</span>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-          ${assignedLabel}
-          <!-- Zuweisung Dropdown -->
-          <div class="relative">
-            <button onclick="toggleAssignMenu(${id}, event)"
-              class="${isAssigned ? 'bg-green-800 hover:bg-green-700' : 'bg-slate-700 hover:bg-slate-600'} text-white text-xs px-3 py-1.5 rounded-lg transition">
-              👷 Zuweisen
-            </button>
-            <div id="assign-menu-${id}" class="assign-menu">
-              ${techOptions}
-              ${isAssigned?`<div class="border-t border-slate-700"></div>
-              <button onclick="assignOrder(${id}, null, event)"
-                class="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-slate-700">
-                ✕ Zuweisung aufheben
-              </button>`:''}
-            </div>
-          </div>
-          <a href="https://bohwk.de/#/orderDetail_${id}.html" target="_blank"
-            class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded-lg transition">Öffnen</a>
-          <button onclick="acceptOrder(${id}, this)"
-            class="bg-sky-700 hover:bg-sky-600 text-white text-xs px-3 py-1.5 rounded-lg transition">→ Hero</button>
-        </div>
+function renderCurrentTab() {
+  if (!DATA) return;
+  switch (currentTab) {
+    case 'orders': renderOrders(); break;
+    case 'contact': renderContact(); break;
+    case 'routes': renderRoutes(); break;
+    case 'techs': renderTechs(); break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function regionBadge(region) {
+  if (!region) return '<span class="px-2 py-0.5 text-xs rounded-full bg-slate-600 text-slate-300">—</span>';
+  if (region === 'nord') return '<span class="px-2 py-0.5 text-xs rounded-full badge-nord font-medium">Nord 🔴</span>';
+  if (region === 'ost') return '<span class="px-2 py-0.5 text-xs rounded-full badge-ost font-medium">Ost 🔵</span>';
+  return `<span class="px-2 py-0.5 text-xs rounded-full bg-slate-600 text-slate-300">${esc(region)}</span>`;
+}
+
+function contactBadge(matched) {
+  if (matched) return '<span class="px-2 py-0.5 text-xs rounded-full badge-contacted font-medium">🟢 Kontaktiert</span>';
+  return '<span class="px-2 py-0.5 text-xs rounded-full badge-open font-medium">🔴 Noch offen</span>';
+}
+
+function phoneLink(phone) {
+  if (!phone || phone === '-') return '<span class="text-slate-500">—</span>';
+  const clean = phone.replace(/[^\d+]/g, '');
+  return `<a href="tel:${esc(clean)}" class="text-blue-400 hover:text-blue-300 hover:underline">${esc(phone)}</a>`;
+}
+
+function allPhonesDisplay(order) {
+  const phones = order._allPhones || [];
+  const mainPhone = order.Telephone || '';
+  if (phones.length <= 1) return phoneLink(mainPhone);
+  // Show main phone + extras from Remarks
+  let html = phoneLink(mainPhone);
+  const mainNorm = phones[0] || '';
+  const extras = phones.filter((p, i) => i > 0 || !mainPhone);
+  if (extras.length) {
+    html += '<div class="mt-1">';
+    for (const p of extras) {
+      html += `<div class="text-xs"><a href="tel:${esc(p)}" class="text-emerald-400 hover:text-emerald-300">📱 ${esc(p)}</a></div>`;
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  } catch { return dateStr; }
+}
+
+function getSourceId(order) {
+  return order.ID?.SourceId || order.SourceId || '';
+}
+
+function matchesSearch(order, q) {
+  if (!q) return true;
+  const lower = q.toLowerCase();
+  const fields = [
+    getSourceId(order), order.Renter, order.Street, order.City,
+    order.Zipcode, order.Telephone, order.Craft, order.DisturbanceType,
+    order.Damage
+  ];
+  return fields.some(f => f && String(f).toLowerCase().includes(lower));
+}
+
+function sortOrders(orders, field, dir) {
+  const mult = dir === 'asc' ? 1 : -1;
+  return [...orders].sort((a, b) => {
+    let va, vb;
+    switch (field) {
+      case 'date':
+        va = a.DateOfReceipt || ''; vb = b.DateOfReceipt || '';
+        return mult * va.localeCompare(vb);
+      case 'region':
+        va = a._region || 'zzz'; vb = b._region || 'zzz';
+        return mult * va.localeCompare(vb);
+      case 'contact':
+        va = a._match?.matched ? 1 : 0; vb = b._match?.matched ? 1 : 0;
+        return mult * (va - vb);
+      case 'plz':
+        va = a.Zipcode || ''; vb = b.Zipcode || '';
+        return mult * va.localeCompare(vb);
+      default:
+        return 0;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TAB 1: ALLE AUFTRÄGE
+// ═══════════════════════════════════════════════════════════════
+function renderOrders() {
+  const container = document.getElementById('content-orders');
+  const allOrders = [...(DATA.orders?.needContact || []), ...(DATA.orders?.contacted || [])];
+
+  // Search + Sort controls
+  let html = `
+    <div class="flex flex-col sm:flex-row gap-3 mb-4">
+      <input type="text" id="searchOrders" placeholder="🔍 Suche nach Name, Adresse, Vorgangsnr…"
+        class="flex-1 px-4 py-2 rounded-lg text-sm" value="${esc(searchQuery)}" oninput="searchQuery=this.value;renderOrders()">
+      <div class="flex gap-2">
+        <select onchange="sortField=this.value;renderOrders()"
+          class="px-3 py-2 rounded-lg text-sm bg-dark-card border border-dark-border text-slate-300">
+          <option value="date" ${sortField==='date'?'selected':''}>Datum</option>
+          <option value="region" ${sortField==='region'?'selected':''}>Region</option>
+          <option value="contact" ${sortField==='contact'?'selected':''}>Status</option>
+          <option value="plz" ${sortField==='plz'?'selected':''}>PLZ</option>
+        </select>
+        <button onclick="sortDir=sortDir==='asc'?'desc':'asc';renderOrders()"
+          class="px-3 py-2 rounded-lg text-sm bg-dark-card border border-dark-border text-slate-300 hover:bg-dark-hover">
+          ${sortDir === 'asc' ? '↑' : '↓'}
+        </button>
       </div>
     </div>`;
-  }).join('');
-}
 
-// ── Zuweisung ────────────────────────────────────────────────────
-function toggleAssignMenu(orderId, e) {
-  e.stopPropagation();
-  document.querySelectorAll('.assign-menu.open').forEach(m => {
-    if (m.id !== `assign-menu-${orderId}`) m.classList.remove('open');
-  });
-  document.getElementById(`assign-menu-${orderId}`)?.classList.toggle('open');
-}
+  let filtered = allOrders.filter(o => matchesSearch(o, searchQuery));
+  filtered = sortOrders(filtered, sortField, sortDir);
 
-document.addEventListener('click', () => {
-  document.querySelectorAll('.assign-menu.open').forEach(m => m.classList.remove('open'));
-});
-
-function assignOrder(orderId, techId, e) {
-  e?.stopPropagation();
-  if (techId === null) {
-    delete assignments[orderId];
+  if (!filtered.length) {
+    html += '<div class="card p-8 text-center text-slate-400">Keine Aufträge gefunden</div>';
   } else {
-    assignments[orderId] = techId;
-  }
-  saveAssignments();
-  renderOrders(_orders, null);
-  updateWorkload(_orders);
-}
+    // Desktop: Tabelle
+    html += `<div class="hidden md:block overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="text-left text-slate-400 border-b border-dark-border">
+        <th class="px-3 py-2">Vorgang</th>
+        <th class="px-3 py-2">Datum</th>
+        <th class="px-3 py-2">Mieter</th>
+        <th class="px-3 py-2">Adresse</th>
+        <th class="px-3 py-2">PLZ/Stadt</th>
+        <th class="px-3 py-2">Telefon</th>
+        <th class="px-3 py-2">Störung</th>
+        <th class="px-3 py-2">Status</th>
+        <th class="px-3 py-2">Region</th>
+      </tr></thead><tbody>`;
 
-// ── Superchat ─────────────────────────────────────────────────────
-function timeAgo(iso) {
-  if (!iso) return '';
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'gerade eben';
-  if (m < 60) return `vor ${m} Min`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `vor ${h} Std`;
-  return `vor ${Math.floor(h/24)} Tagen`;
-}
-
-function renderSuperchat(convos, err) {
-  const el = document.getElementById('superchatList');
-  if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
-  if (!convos.length) { el.innerHTML=`<div class="text-green-400 text-sm py-2">✅ Alles beantwortet</div>`; return; }
-
-  // Sortierung: ungelesene zuerst (= Superchat roter Badge), dann nach Zeitfenster
-  // (Backend liefert bereits so sortiert, Frontend macht nochmal zur Sicherheit)
-  const needsReply  = convos.filter(c => c.unread);
-  const read        = convos.filter(c => !c.unread);
-
-  const sortByTime = (a, b) => {
-    const ta = a.timeWindowUntil || '';
-    const tb = b.timeWindowUntil || '';
-    return tb.localeCompare(ta);
-  };
-  needsReply.sort(sortByTime);
-  read.sort(sortByTime);
-
-  const allSorted = [...needsReply, ...read];
-
-  const makeCard = (c) => {
-    const needsAns  = c.unread;   // ungelesen = wie roter Badge in Superchat
-    const answered  = !c.unread;
-    const timeRef   = c.lastMessageAt;
-    const timeStr   = timeRef ? timeAgo(timeRef) : '';
-    const msgText   = c.lastMessage || '';
-
-    // Verbleibendes Fenster anzeigen
-    const minLeft = c.minutesLeft;
-    let windowBadge = '';
-    if (minLeft !== null) {
-      const h = Math.floor(minLeft / 60);
-      const m = minLeft % 60;
-      const label = h > 0 ? `${h}h ${m}min` : `${m}min`;
-      const urgent = minLeft < 120;
-      windowBadge = `<span style="font-size:10px;padding:1px 6px;border-radius:9999px;background:${urgent?'#7f1d1d':'#1e3a4a'};color:${urgent?'#fca5a5':'#7dd3fc'};flex-shrink:0" title="WhatsApp Fenster">⏱ ${label}</span>`;
+    for (const o of filtered) {
+      const emergency = o.Emergency === 1;
+      const rowClass = emergency ? 'bg-red-900/20' : '';
+      html += `<tr class="border-b border-dark-border/50 hover:bg-dark-hover ${rowClass}">
+        <td class="px-3 py-2.5 font-mono text-xs text-slate-300">${emergency ? '⚡ ' : ''}${esc(getSourceId(o))}</td>
+        <td class="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">${formatDate(o.DateOfReceipt)}</td>
+        <td class="px-3 py-2.5 text-white">${esc(o.Renter)}</td>
+        <td class="px-3 py-2.5 text-slate-300">${esc(o.Street)}</td>
+        <td class="px-3 py-2.5 text-slate-400">${esc(o.Zipcode)} ${esc(o.City)}</td>
+        <td class="px-3 py-2.5">${allPhonesDisplay(o)}</td>
+        <td class="px-3 py-2.5 text-slate-400 text-xs">${esc(o.Craft || o.DisturbanceType)}</td>
+        <td class="px-3 py-2.5">${contactBadge(o._match?.matched)}</td>
+        <td class="px-3 py-2.5">${regionBadge(o._region)}</td>
+      </tr>`;
     }
+    html += '</tbody></table></div>';
 
-    let statusDot, borderStyle, bgAvatar, msgColor;
-    if (needsAns) {
-      statusDot   = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f97316;flex-shrink:0;margin-top:4px"></span>`;
-      borderStyle = 'border-left:3px solid #f97316';
-      bgAvatar    = '#7c3a00';
-      msgColor    = '#fdba74'; // orange — Kunde hat geschrieben, wartet auf Antwort
-    } else if (answered) {
-      statusDot   = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;margin-top:4px"></span>`;
-      borderStyle = 'border-left:3px solid #1e3a28';
-      bgAvatar    = '#14532d';
-      msgColor    = '#86efac';
-    } else {
-      statusDot   = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#475569;flex-shrink:0;margin-top:4px"></span>`;
-      borderStyle = 'border-left:3px solid #334155';
-      bgAvatar    = '#334155';
-      msgColor    = '#94a3b8';
-    }
-
-    const badge = needsAns
-      ? `<span style="background:#f97316;color:#fff;font-size:10px;padding:1px 7px;border-radius:9999px;font-weight:700;flex-shrink:0">● Neu</span>`
-      : '';
-
-    const msgPreview = msgText
-      ? `<div style="color:${msgColor};font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${msgText}</div>`
-      : '';
-
-    return `
-      <div style="display:flex;gap:8px;padding:10px 8px;border-bottom:1px solid #1e293b;${borderStyle};cursor:pointer"
-           onclick="openConv('${c.id}', ${needsAns})">
-        ${statusDot}
-        <div style="width:32px;height:32px;border-radius:50%;background:${bgAvatar};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">
-          ${(c.contactName||'?')[0].toUpperCase()}
+    // Mobile: Karten
+    html += '<div class="md:hidden space-y-3">';
+    for (const o of filtered) {
+      const emergency = o.Emergency === 1;
+      html += `<div class="card p-4 ${emergency ? 'border-red-700' : ''}">
+        <div class="flex justify-between items-start mb-2">
+          <span class="font-mono text-xs text-slate-400">${emergency ? '⚡ ' : ''}${esc(getSourceId(o))}</span>
+          <div class="flex gap-1">${contactBadge(o._match?.matched)} ${regionBadge(o._region)}</div>
         </div>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
-            <span style="color:#f1f5f9;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.contactName}</span>
-            <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-              ${badge}
-              ${windowBadge}
-            </div>
-          </div>
-          ${msgPreview}
-          ${timeStr ? `<div style="color:#475569;font-size:10px;margin-top:1px">${timeStr}</div>` : ''}
+        <div class="text-white font-medium">${esc(o.Renter)}</div>
+        <div class="text-sm text-slate-400 mt-1">${esc(o.Street)}, ${esc(o.Zipcode)} ${esc(o.City)}</div>
+        <div class="flex justify-between items-center mt-2">
+          <div class="text-sm">${phoneLink(o.Telephone)}</div>
+          <div class="text-xs text-slate-500">${formatDate(o.DateOfReceipt)} · ${esc(o.Craft)}</div>
         </div>
       </div>`;
-  };
-
-  // Header-Zeile mit Zähler
-  const needsCount = needsReply.length;
-  const header = needsCount > 0
-    ? `<div style="color:#f97316;font-size:12px;font-weight:700;padding:6px 8px 4px;border-bottom:1px solid #1e293b">
-         🔔 ${needsCount} ${needsCount===1?'ungelesene Nachricht':'ungelesene Nachrichten'}
-       </div>`
-    : `<div style="color:#22c55e;font-size:12px;padding:6px 8px 4px;border-bottom:1px solid #1e293b">✅ Alles gelesen</div>`;
-
-  el.innerHTML = header + allSorted.map(makeCard).join('');
-}
-
-// ── Hero Termine ─────────────────────────────────────────────────
-function renderHero(apps, err) {
-  const el = document.getElementById('heroList');
-  if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
-  if (!apps.length) { el.innerHTML=`<div class="text-slate-500 text-sm">Keine Termine heute</div>`; return; }
-  el.innerHTML = apps.map(a=>{
-    const t = a.start ? new Date(a.start).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '–';
-    const te = a.end ? new Date(a.end).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
-    const typeLabel = { repair:'Reparatur', maintenance:'Wartung', other:'Sonstiges' }[a.type] || a.type || '';
-    const customer = a.customer ? `<span class="text-slate-300 text-xs">${a.customer}</span>` : '';
-    return `<div class="py-2 border-b border-slate-700 last:border-0">
-      <div class="flex justify-between items-start">
-        <span class="text-sky-400 font-mono text-sm font-bold">${t}${te?' – '+te:''}</span>
-        <span class="text-xs text-slate-500 ml-2">${typeLabel}</span>
-      </div>
-      ${customer}
-      <div class="text-white text-sm mt-0.5">${a.address||'–'}</div>
-      ${a.description ? `<div class="text-slate-400 text-xs mt-0.5 line-clamp-2">${a.description.trim()}</div>` : ''}
-    </div>`;
-  }).join('');
-}
-
-// ── Victor Tasks ─────────────────────────────────────────────────
-function renderTasks(items, err) {
-  const el = document.getElementById('tasksList');
-  if (err) { el.innerHTML=`<div class="text-red-400 text-xs">${err}</div>`; return; }
-  if (!items || !items.length) { el.innerHTML=`<div class="text-slate-500 text-sm">Keine offenen Aufgaben</div>`; return; }
-  el.innerHTML = items.map(t=>{
-    const due = t.dueDate ? new Date(t.dueDate) : null;
-    const now = new Date();
-    const isOverdue = due && due < now;
-    const dueFmt = due ? due.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) + ' ' + due.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
-    const dueColor = isOverdue ? 'text-red-400' : 'text-amber-400';
-    return `<div class="py-2 border-b border-slate-700 last:border-0">
-      <div class="flex justify-between items-start gap-2">
-        <div class="text-white text-sm font-medium">${t.title}</div>
-        ${dueFmt ? `<div class="text-xs ${dueColor} whitespace-nowrap">${isOverdue?'⚠ ':''}${dueFmt}</div>` : ''}
-      </div>
-      ${t.comment ? `<div class="text-slate-400 text-xs mt-0.5">${t.comment.trim()}</div>` : ''}
-    </div>`;
-  }).join('');
-}
-
-// ── B&O Accept ───────────────────────────────────────────────────
-async function acceptOrder(id, btn) {
-  btn.textContent='⏳'; btn.disabled=true;
-  try {
-    const r = await fetch(`/api/accept?id=${id}`,{method:'POST'});
-    const d = await r.json();
-    if (d.ok) { btn.textContent='✅'; btn.className='bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg'; }
-    else { btn.textContent='❌'; btn.disabled=false; alert('Fehler: '+(d.error||'?')); }
-  } catch { btn.textContent='❌'; btn.disabled=false; }
-}
-
-async function openConv(convId, isUnread) {
-  window.open(`https://app.superchat.de/conversations/${convId}`, '_blank');
-  if (isUnread) {
-    // Automatisch als gelesen markieren wenn Gespräch geöffnet wird
-    try {
-      await fetch('/api/ack', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ convId })
-      });
-      setTimeout(loadState, 800); // kurz warten dann neu laden
-    } catch {}
+    }
+    html += '</div>';
   }
+
+  html += `<div class="mt-3 text-xs text-slate-500">${filtered.length} von ${allOrders.length} Aufträgen</div>`;
+  container.innerHTML = html;
 }
 
-loadState();
-setInterval(()=>loadState(), 30*1000); // alle 30s prüfen (Superchat immer frisch)
+// ═══════════════════════════════════════════════════════════════
+// TAB 2: NOCH ANSCHREIBEN
+// ═══════════════════════════════════════════════════════════════
+function renderContact() {
+  const container = document.getElementById('content-contact');
+  const orders = DATA.orders?.needContact || [];
+
+  if (!orders.length) {
+    container.innerHTML = '<div class="card p-8 text-center"><div class="text-4xl mb-3">🎉</div><div class="text-green-400 font-medium">Alle Kunden kontaktiert!</div></div>';
+    return;
+  }
+
+  // Group by region
+  const nord = orders.filter(o => o._region === 'nord');
+  const ost = orders.filter(o => o._region === 'ost');
+  const other = orders.filter(o => o._region !== 'nord' && o._region !== 'ost');
+
+  let html = '';
+
+  function renderRegionGroup(title, regionOrders, colorClass) {
+    if (!regionOrders.length) return '';
+    let h = `<div class="mb-6">
+      <h3 class="text-lg font-bold mb-3 ${colorClass}">${title} (${regionOrders.length})</h3>
+      <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">`;
+    
+    for (const o of regionOrders) {
+      const techRec = o._recommendedTech;
+      h += `<div class="card p-4">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <span class="font-mono text-xs text-slate-400">${esc(getSourceId(o))}</span>
+            <span class="text-xs text-slate-500 ml-2">${formatDate(o.DateOfReceipt)}</span>
+          </div>
+          ${regionBadge(o._region)}
+        </div>
+        <div class="text-white font-medium mb-1">${esc(o.Renter)}</div>
+        <div class="text-sm text-slate-400 mb-3">${esc(o.Street)}, ${esc(o.Zipcode)} ${esc(o.City)}</div>
+        ${(o._allPhones && o._allPhones.length) || (o.Telephone && o.Telephone !== '-') ? `
+          <div class="mb-3">
+            ${o.Telephone && o.Telephone !== '-' ? `<div class="text-xl font-bold text-blue-400">
+              <a href="tel:${esc(o.Telephone.replace(/[^\d+]/g,''))}" class="hover:text-blue-300">📞 ${esc(o.Telephone)}</a>
+            </div>` : ''}
+            ${(o._allPhones || []).filter(p => {
+              const mainClean = (o.Telephone || '').replace(/[^\d+]/g, '');
+              return p !== mainClean && !mainClean.includes(p.replace('+49','0').replace(/^0/,''));
+            }).map(p => `<div class="text-sm mt-1"><a href="tel:${esc(p)}" class="text-emerald-400 hover:text-emerald-300">📱 ${esc(p)} <span class="text-xs text-slate-500">(aus Beschreibung)</span></a></div>`).join('')}
+          </div>` : '<div class="text-slate-500 mb-3">Keine Telefonnummer</div>'}
+        <div class="text-xs text-slate-500 mb-2">${esc(o.Craft)} — ${esc(o.Damage || o.DisturbanceType || '')}</div>
+        ${techRec ? `<div class="text-xs text-slate-400">👷 Empfehlung: <span class="text-white font-medium">${esc(techRec.name)}</span></div>` : ''}
+        ${o.Remarks ? `<div class="text-xs text-yellow-500 mt-2">📝 ${esc(o.Remarks.substring(0, 100))}${o.Remarks.length > 100 ? '…' : ''}</div>` : ''}
+      </div>`;
+    }
+    h += '</div></div>';
+    return h;
+  }
+
+  html += renderRegionGroup('🔴 Region Nord', nord, 'text-red-400');
+  html += renderRegionGroup('🔵 Region Ost', ost, 'text-blue-400');
+  if (other.length) html += renderRegionGroup('— Ohne Region', other, 'text-slate-400');
+
+  container.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TAB 3: ROUTEN / ADRESS-GRUPPEN
+// ═══════════════════════════════════════════════════════════════
+function renderRoutes() {
+  const container = document.getElementById('content-routes');
+  const groups = DATA.addressGroups || [];
+
+  if (!groups.length) {
+    container.innerHTML = '<div class="card p-8 text-center text-slate-400">Keine Adress-Gruppen</div>';
+    return;
+  }
+
+  let html = '<div class="space-y-3">';
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i];
+    const count = g.orders.length;
+    const multi = count > 1;
+
+    html += `<div class="card overflow-hidden">
+      <div class="p-4 cursor-pointer hover:bg-dark-hover flex items-center justify-between" onclick="toggleExpand(${i})">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl font-bold ${multi ? 'text-amber-400' : 'text-slate-400'}">${count}</span>
+          <div>
+            <div class="text-white font-medium">${esc(g.street)}</div>
+            <div class="text-sm text-slate-400">${esc(g.zipcode)} ${esc(g.city)}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          ${regionBadge(g.region)}
+          <svg id="expand-icon-${i}" class="w-5 h-5 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </div>
+      </div>
+      <div id="expand-${i}" class="expand-content">
+        <div class="border-t border-dark-border px-4 pb-4 pt-2 space-y-2">`;
+
+    for (const o of g.orders) {
+      html += `<div class="flex flex-col sm:flex-row sm:items-center gap-2 py-2 border-b border-dark-border/30 last:border-0">
+        <span class="font-mono text-xs text-slate-400 w-24">${o.Emergency === 1 ? '⚡ ' : ''}${esc(getSourceId(o))}</span>
+        <span class="text-white text-sm flex-1">${esc(o.Renter)}</span>
+        <span class="text-sm">${phoneLink(o.Telephone)}</span>
+        <span class="text-xs text-slate-500">${esc(o.Craft)}</span>
+        ${contactBadge(o._match?.matched)}
+      </div>`;
+    }
+
+    html += '</div></div></div>';
+  }
+  html += '</div>';
+
+  // Summary
+  const multiGroups = groups.filter(g => g.orders.length > 1);
+  if (multiGroups.length) {
+    html += `<div class="mt-4 card p-4 border-amber-700">
+      <div class="text-amber-400 font-medium">💡 ${multiGroups.length} Adressen mit mehreren Aufträgen</div>
+      <div class="text-sm text-slate-400 mt-1">Diese können zusammengelegt werden: ${multiGroups.reduce((s,g) => s + g.orders.length, 0)} Aufträge an ${multiGroups.length} Adressen</div>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function toggleExpand(i) {
+  const el = document.getElementById('expand-' + i);
+  const icon = document.getElementById('expand-icon-' + i);
+  el.classList.toggle('open');
+  icon.style.transform = el.classList.contains('open') ? 'rotate(180deg)' : '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TAB 4: MONTEURE
+// ═══════════════════════════════════════════════════════════════
+function renderTechs() {
+  const container = document.getElementById('content-techs');
+  const techs = DATA.technicians;
+  if (!techs) {
+    container.innerHTML = '<div class="card p-8 text-center text-slate-400">Keine Monteur-Daten</div>';
+    return;
+  }
+
+  let html = '';
+
+  function renderRegion(title, region, colorBg, colorFill, emoji) {
+    const regionTechs = techs[region] || [];
+    if (!regionTechs.length) return '';
+    
+    const maxJobs = Math.max(...regionTechs.map(t => t.jobs), 1);
+    const totalJobs = regionTechs.reduce((s, t) => s + t.jobs, 0);
+    const minJobsTech = regionTechs.reduce((min, t) => t.jobs < min.jobs ? t : min, regionTechs[0]);
+    const maxJobsTech = regionTechs.reduce((max, t) => t.jobs > max.jobs ? t : max, regionTechs[0]);
+
+    let h = `<div class="card p-5 mb-4">
+      <h3 class="text-lg font-bold mb-4">${emoji} ${title} <span class="text-sm font-normal text-slate-400">(${totalJobs} offene Aufträge)</span></h3>
+      <div class="space-y-4">`;
+
+    for (const t of regionTechs) {
+      const pct = maxJobs > 0 ? Math.round((t.jobs / maxJobs) * 100) : 0;
+      const isMin = t.name === minJobsTech.name && regionTechs.length > 1 && minJobsTech.jobs < maxJobsTech.jobs;
+      h += `<div>
+        <div class="flex justify-between items-center mb-1">
+          <span class="text-white font-medium">${esc(t.name)} ${isMin ? '⭐' : ''}</span>
+          <span class="text-sm ${isMin ? 'text-green-400' : 'text-slate-400'}">${t.jobs} Jobs</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill ${colorFill}" style="width: ${pct}%"></div>
+        </div>
+      </div>`;
+    }
+
+    // Recommendation
+    if (minJobsTech.jobs < maxJobsTech.jobs && regionTechs.length > 1) {
+      const diff = maxJobsTech.jobs - minJobsTech.jobs;
+      h += `<div class="mt-3 p-3 rounded-lg bg-slate-800/50 text-sm text-slate-300">
+        💡 <strong>${esc(minJobsTech.name)}</strong> hat ${diff} Job${diff !== 1 ? 's' : ''} weniger als ${esc(maxJobsTech.name)} → nächsten ${title.split(' ')[1]}-Auftrag an <strong>${esc(minJobsTech.name)}</strong>
+      </div>`;
+    } else if (regionTechs.length > 1) {
+      h += `<div class="mt-3 p-3 rounded-lg bg-slate-800/50 text-sm text-green-400">
+        ✅ Gleichmäßig verteilt
+      </div>`;
+    }
+
+    h += '</div></div>';
+    return h;
+  }
+
+  html += renderRegion('Region Nord', 'nord', 'bg-red-900/30', 'bg-red-500', '🔴');
+  html += renderRegion('Region Ost', 'ost', 'bg-blue-900/30', 'bg-blue-500', '🔵');
+
+  container.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+loadData();
+
+// Auto-refresh deaktiviert — nur manuell per Button
 </script>
 </body>
 </html>
