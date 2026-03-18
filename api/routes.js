@@ -78,13 +78,16 @@ module.exports = async (req, res) => {
       if (ORS_KEY && orderedOrders.length > 0) {
         try {
           const waypoints = [tech.home, ...orderedOrders.map(o => o.coords), tech.home];
+          console.log('[routes] ORS Directions request:', waypoints.length, 'waypoints, key:', ORS_KEY.substring(0, 15) + '...');
           const dirRes = await fetch(`${ORS_BASE}/v2/directions/driving-car/geojson`, {
             method: 'POST',
             headers: { 'Authorization': ORS_KEY, 'Content-Type': 'application/json' },
             body: JSON.stringify({ coordinates: waypoints }),
           });
+          const dirText = await dirRes.text();
+          console.log('[routes] ORS response:', dirRes.status, dirText.substring(0, 200));
           if (dirRes.ok) {
-            const dirData = await dirRes.json();
+            const dirData = JSON.parse(dirText);
             const feature = dirData.features?.[0];
             if (feature) {
               routeGeometry = feature.geometry?.coordinates;
@@ -96,7 +99,7 @@ module.exports = async (req, res) => {
             }
           }
         } catch (e) {
-          console.warn('[routes] ORS Directions failed, using Haversine:', e.message);
+          console.warn('[routes] ORS Directions failed:', e.message);
         }
       }
 
