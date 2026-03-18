@@ -434,295 +434,390 @@ function renderContact() {
 // ═══════════════════════════════════════════════════════════════
 // TAB 3: ROUTENPLANER
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// TAB 3: ROUTENPLANER (Monteur-basiert)
+// ═══════════════════════════════════════════════════════════════
+const TECHS = [
+  { id: 1, name: 'Nico Kussio', city: 'Gütersloh', home: [8.3858, 51.9069], color: '#3b82f6' },
+  { id: 2, name: 'Nico Walczak', city: 'Sundern', home: [8.0011, 51.3279], color: '#22c55e' },
+  { id: 3, name: 'Adem', city: 'Sundern', home: [8.0011, 51.3279], color: '#f59e0b' },
+  { id: 4, name: 'Ramiz', city: 'Hamm', home: [7.8159, 51.6739], color: '#ef4444' },
+];
 let routeMap = null;
-let routeData = null;
 let routeMapLayers = [];
-
-const TECH_COLORS = {
-  1: '#3b82f6', // Nico K - Blau
-  2: '#22c55e', // Nico W - Grün
-  3: '#f59e0b', // Adem - Orange
-  4: '#ef4444', // Ramiz - Rot
-};
-const TECH_NAMES = { 1: 'Nico Kussio', 2: 'Nico Walczak', 3: 'Adem', 4: 'Ramiz' };
+let routeAllOrders = null; // cached from GET /api/routes
+let routeSelectedTech = null;
+let routeSelectedOrders = new Set();
 
 function renderRoutes() {
   const container = document.getElementById('content-routes');
 
-  let html = `
-    <div class="flex items-center justify-between mb-4">
+  const techOptions = TECHS.map(t =>
+    `<option value="${t.id}" ${routeSelectedTech === t.id ? 'selected' : ''}>${t.name} (${t.city})</option>`
+  ).join('');
+
+  container.innerHTML = `
+    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
       <h2 class="text-lg font-bold text-white">🗺️ Routenplaner</h2>
-      <button onclick="calculateRoutes()" id="calcRouteBtn"
-        class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-        🔄 Route berechnen
-      </button>
+      <div class="flex items-center gap-2 flex-1">
+        <label class="text-sm text-slate-400">Monteur:</label>
+        <select id="techSelect" onchange="onTechSelected()" class="bg-dark-card border border-dark-border text-white rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+          <option value="">— Monteur wählen —</option>
+          ${techOptions}
+        </select>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="loadRouteOrders()" id="loadOrdersBtn"
+          class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
+          📥 Aufträge laden
+        </button>
+        <button onclick="optimizeSelectedRoute()" id="optimizeBtn" disabled
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors">
+          🗺️ Route berechnen
+        </button>
+      </div>
     </div>
-    <div class="card mb-4 overflow-hidden">
-      <div id="route-map"></div>
+
+    <!-- Map -->
+    <div class="card mb-4 overflow-hidden" style="height:400px">
+      <div id="route-map" style="height:100%;width:100%"></div>
     </div>
-    <div id="route-panels"></div>
-    <div id="route-unassigned"></div>`;
 
-  container.innerHTML = html;
+    <!-- Route result (hidden until calculated) -->
+    <div id="route-result" class="mb-4"></div>
 
-  // Init map if not done
+    <!-- Order list -->
+    <div id="route-order-list">
+      <div class="card p-8 text-center text-slate-500">Monteur auswählen und Aufträge laden</div>
+    </div>`;
+
   setTimeout(() => initRouteMap(), 100);
-
-  // If we have cached data, render it
-  if (routeData) {
-    renderRouteResults(routeData);
-  }
 }
 
 function initRouteMap() {
   const mapEl = document.getElementById('route-map');
   if (!mapEl) return;
+  if (routeMap) { routeMap.remove(); routeMap = null; }
 
-  if (routeMap) {
-    routeMap.remove();
-    routeMap = null;
-  }
-
-  routeMap = L.map('route-map', {
-    center: [51.55, 8.1],
-    zoom: 9,
-    zoomControl: true,
-  });
-
+  routeMap = L.map('route-map', { center: [51.55, 8.1], zoom: 9, zoomControl: true });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OSM &copy; CARTO',
-    maxZoom: 19,
+    attribution: '&copy; OSM &copy; CARTO', maxZoom: 19,
   }).addTo(routeMap);
 
-  // Add home markers for technicians
-  const techHomes = [
-    { name: 'Nico Kussio', home: [51.9069, 8.3858], color: '#3b82f6' },
-    { name: 'Nico Walczak', home: [51.3279, 8.0011], color: '#22c55e' },
-    { name: 'Adem', home: [51.3279, 8.0011], color: '#f59e0b' },
-    { name: 'Ramiz', home: [51.6739, 7.8159], color: '#ef4444' },
-  ];
-
-  for (const t of techHomes) {
-    const icon = L.divIcon({
-      html: `<div style="color:${t.color};font-size:24px;text-shadow:0 0 4px rgba(0,0,0,0.8);">🏠</div>`,
-      className: 'tech-marker',
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-    });
-    L.marker(t.home, { icon }).addTo(routeMap)
-      .bindPopup(`<strong style="color:${t.color}">${t.name}</strong><br>Startpunkt`);
-  }
-
-  // Re-render cached data on map
-  if (routeData) renderMapMarkers(routeData);
+  // Show selected tech's home or all homes
+  showTechHomes();
 }
 
-async function calculateRoutes() {
-  const btn = document.getElementById('calcRouteBtn');
-  const panels = document.getElementById('route-panels');
+function showTechHomes() {
+  if (!routeMap) return;
+  const show = routeSelectedTech ? TECHS.filter(t => t.id === routeSelectedTech) : TECHS;
+  for (const t of show) {
+    const icon = L.divIcon({
+      html: `<div style="color:${t.color};font-size:24px;text-shadow:0 0 4px rgba(0,0,0,0.8);">🏠</div>`,
+      className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+    });
+    const m = L.marker([t.home[1], t.home[0]], { icon }).addTo(routeMap)
+      .bindPopup(`<strong style="color:${t.color}">${t.name}</strong><br>${t.city} (Start)`);
+    routeMapLayers.push(m);
+  }
+}
 
+function clearRouteMap() {
+  if (!routeMap) return;
+  for (const l of routeMapLayers) routeMap.removeLayer(l);
+  routeMapLayers = [];
+}
+
+function onTechSelected() {
+  const sel = document.getElementById('techSelect');
+  routeSelectedTech = sel.value ? parseInt(sel.value) : null;
+  routeSelectedOrders.clear();
+  document.getElementById('route-result').innerHTML = '';
+  clearRouteMap();
+  showTechHomes();
+  updateOptimizeBtn();
+  // Re-render order list sorted by this tech
+  if (routeAllOrders) renderOrderList();
+}
+
+function updateOptimizeBtn() {
+  const btn = document.getElementById('optimizeBtn');
+  if (btn) btn.disabled = !(routeSelectedTech && routeSelectedOrders.size > 0);
+}
+
+function toggleOrderSelection(orderId) {
+  if (routeSelectedOrders.has(orderId)) {
+    routeSelectedOrders.delete(orderId);
+  } else {
+    routeSelectedOrders.add(orderId);
+  }
+  // Update checkbox UI
+  const cb = document.getElementById('cb-' + orderId);
+  if (cb) cb.checked = routeSelectedOrders.has(orderId);
+  // Update row highlight
+  const row = document.getElementById('row-' + orderId);
+  if (row) {
+    if (routeSelectedOrders.has(orderId)) {
+      row.classList.add('bg-slate-800/60');
+      row.classList.remove('hover:bg-dark-hover');
+    } else {
+      row.classList.remove('bg-slate-800/60');
+      row.classList.add('hover:bg-dark-hover');
+    }
+  }
+  updateOptimizeBtn();
+  updateSelectionCounter();
+  // Update map to show selected markers
+  showSelectedOnMap();
+}
+
+function selectAllOrders() {
+  if (!routeAllOrders) return;
+  const sorted = getSortedOrders();
+  if (routeSelectedOrders.size === sorted.length) {
+    routeSelectedOrders.clear(); // deselect all
+  } else {
+    sorted.forEach(o => routeSelectedOrders.add(o.id));
+  }
+  renderOrderList();
+  updateOptimizeBtn();
+  showSelectedOnMap();
+}
+
+function getSortedOrders() {
+  if (!routeAllOrders || !routeSelectedTech) return routeAllOrders || [];
+  return [...routeAllOrders].sort((a, b) => (a.distances[routeSelectedTech] || 999) - (b.distances[routeSelectedTech] || 999));
+}
+
+function updateSelectionCounter() {
+  const el = document.getElementById('selection-count');
+  if (el) el.textContent = routeSelectedOrders.size;
+}
+
+function showSelectedOnMap() {
+  clearRouteMap();
+  showTechHomes();
+  if (!routeMap || !routeAllOrders) return;
+  const tech = TECHS.find(t => t.id === routeSelectedTech);
+  if (!tech) return;
+
+  for (const o of routeAllOrders) {
+    if (!routeSelectedOrders.has(o.id) || !o.coords) continue;
+    const icon = L.divIcon({
+      html: `<div style="background:${tech.color};color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);">●</div>`,
+      className: '', iconSize: [22, 22], iconAnchor: [11, 11],
+    });
+    const m = L.marker([o.coords[1], o.coords[0]], { icon }).addTo(routeMap)
+      .bindPopup(`<strong>${esc(o.renter)}</strong><br>${esc(o.street)}<br>${esc(o.zipcode)} ${esc(o.city)}`);
+    routeMapLayers.push(m);
+  }
+}
+
+async function loadRouteOrders() {
+  const btn = document.getElementById('loadOrdersBtn');
+  const list = document.getElementById('route-order-list');
   btn.disabled = true;
-  btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border:2px solid #94a3b8;border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;display:inline-block;"></div> Berechne…';
-  panels.innerHTML = '<div class="route-loading"><div class="spinner"></div><span class="text-slate-400">Routen werden berechnet (Geocoding + Optimierung)… Das kann 10-30 Sekunden dauern.</span></div>';
+  btn.textContent = '⏳ Laden…';
+  list.innerHTML = '<div class="card p-8 text-center text-slate-400"><div class="mb-2">Aufträge werden geladen und geocoded…</div><div class="text-xs text-slate-500">Das kann 10-30 Sekunden dauern (Geocoding aller Adressen)</div></div>';
 
   try {
     const res = await fetch('/api/routes');
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
-      throw new Error(err.error || 'Unbekannter Fehler');
-    }
-    routeData = await res.json();
-    renderRouteResults(routeData);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+    const data = await res.json();
+    routeAllOrders = data.orders || [];
+    renderOrderList();
   } catch (err) {
-    panels.innerHTML = `<div class="card p-6 text-center">
-      <div class="text-red-400 text-lg mb-2">❌ Fehler bei Routenberechnung</div>
-      <div class="text-slate-400 text-sm">${esc(err.message)}</div>
-      <button onclick="calculateRoutes()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Erneut versuchen</button>
-    </div>`;
+    list.innerHTML = `<div class="card p-6 text-center"><div class="text-red-400 mb-2">❌ ${esc(err.message)}</div>
+      <button onclick="loadRouteOrders()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Erneut</button></div>`;
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '🔄 Route berechnen';
+    btn.textContent = '📥 Aufträge laden';
   }
 }
 
-function renderRouteResults(data) {
-  renderMapMarkers(data);
-  renderTechPanels(data);
-  renderUnassigned(data);
-}
-
-function renderMapMarkers(data) {
-  if (!routeMap) return;
-
-  // Clear previous markers/lines
-  for (const layer of routeMapLayers) {
-    routeMap.removeLayer(layer);
+function renderOrderList() {
+  const list = document.getElementById('route-order-list');
+  if (!routeAllOrders || !routeAllOrders.length) {
+    list.innerHTML = '<div class="card p-8 text-center text-slate-500">Keine offenen Aufträge</div>';
+    return;
   }
-  routeMapLayers = [];
 
-  const allCoords = [];
+  const sorted = getSortedOrders();
+  const allSelected = routeSelectedOrders.size === sorted.length && sorted.length > 0;
 
-  for (const tech of data.technicians) {
-    if (!tech.orders || !tech.orders.length) continue;
-    const color = tech.color || TECH_COLORS[tech.id] || '#888';
+  let html = `<div class="card overflow-hidden">
+    <div class="p-3 border-b border-dark-border flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <button onclick="selectAllOrders()" class="px-3 py-1 text-xs font-medium rounded ${allSelected ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}">${allSelected ? '☑ Alle abwählen' : '☐ Alle auswählen'}</button>
+        <span class="text-sm text-slate-400"><span id="selection-count">${routeSelectedOrders.size}</span> / ${sorted.length} ausgewählt</span>
+      </div>
+      ${routeSelectedTech ? `<span class="text-xs text-slate-500">Sortiert nach Entfernung von ${esc(TECHS.find(t=>t.id===routeSelectedTech)?.name || '')}</span>` : ''}
+    </div>
+    <div class="divide-y divide-dark-border/30" style="max-height:500px;overflow-y:auto">`;
 
-    // Draw polyline: home → orders → home
-    const lineCoords = [
-      [tech.home[1], tech.home[0]], // home [lng,lat] → [lat,lng] for Leaflet
-      ...tech.orders.map(o => [o.coords[1], o.coords[0]]),
-      [tech.home[1], tech.home[0]], // back home
-    ];
+  for (const o of sorted) {
+    const dist = routeSelectedTech ? o.distances?.[routeSelectedTech] : null;
+    const checked = routeSelectedOrders.has(o.id);
+    const bgClass = checked ? 'bg-slate-800/60' : 'hover:bg-dark-hover';
 
-    const polyline = L.polyline(lineCoords, {
-      color: color,
-      weight: 3,
-      opacity: 0.7,
-      dashArray: '8 4',
-    }).addTo(routeMap);
-    routeMapLayers.push(polyline);
-
-    // Order markers
-    tech.orders.forEach((o, idx) => {
-      const latLng = [o.coords[1], o.coords[0]];
-      allCoords.push(latLng);
-
-      const icon = L.divIcon({
-        html: `<div style="background:${color};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);">${idx + 1}</div>`,
-        className: '',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
-      });
-
-      const marker = L.marker(latLng, { icon }).addTo(routeMap)
-        .bindPopup(`
-          <div style="min-width:180px">
-            <strong style="color:${color}">${esc(tech.name)}</strong> — Stop ${idx + 1}<br>
-            <strong>${esc(o.renter)}</strong><br>
-            ${esc(o.street)}<br>
-            ${esc(o.zipcode)} ${esc(o.city)}<br>
-            <span style="color:#94a3b8">${esc(o.craft || o.disturbanceType)}</span>
-            ${o.telephone ? `<br><a href="tel:${esc(o.telephone)}">${esc(o.telephone)}</a>` : ''}
-            ${o.emergency ? '<br><span style="color:#fca5a5">⚡ Notfall</span>' : ''}
+    html += `<div id="row-${esc(o.id)}" class="p-3 cursor-pointer transition-colors ${bgClass}" onclick="toggleOrderSelection('${esc(o.id)}')">
+      <div class="flex items-center gap-3">
+        <input type="checkbox" id="cb-${esc(o.id)}" ${checked ? 'checked' : ''} class="w-4 h-4 accent-blue-500 pointer-events-none" tabindex="-1">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
+            ${o.emergency ? '<span class="text-red-400 text-xs">⚡ Notfall</span>' : ''}
           </div>
-        `);
-      routeMapLayers.push(marker);
-    });
+          <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
+          <div class="text-xs text-slate-500">${esc(o.craft || o.disturbanceType)}${o.telephone ? ' · ' + esc(o.telephone) : ''}</div>
+        </div>
+        ${dist !== null ? `<div class="text-right flex-shrink-0">
+          <div class="text-sm font-bold ${dist < 20 ? 'text-green-400' : dist < 40 ? 'text-amber-400' : 'text-red-400'}">${dist} km</div>
+          <div class="text-xs text-slate-500">Luftlinie</div>
+        </div>` : ''}
+      </div>
+    </div>`;
   }
 
-  // Fit bounds to show all markers
-  if (allCoords.length) {
-    const bounds = L.latLngBounds(allCoords);
-    // Include home points
-    for (const tech of data.technicians) {
-      bounds.extend([tech.home[1], tech.home[0]]);
-    }
-    routeMap.fitBounds(bounds, { padding: [30, 30] });
-  }
+  html += '</div></div>';
+  list.innerHTML = html;
+  updateSelectionCounter();
 }
 
 function formatDuration(seconds) {
   if (!seconds) return '—';
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}h ${m}min`;
-  return `${m} min`;
+  return h > 0 ? `${h}h ${m}min` : `${m} min`;
 }
 
-function googleMapsUrl(tech) {
-  if (!tech.orders || !tech.orders.length) return '#';
-  const origin = `${tech.home[1]},${tech.home[0]}`;
-  const destination = origin; // return home
-  const waypoints = tech.orders.map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
-  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
-}
+async function optimizeSelectedRoute() {
+  if (!routeSelectedTech || routeSelectedOrders.size === 0) return;
+  const btn = document.getElementById('optimizeBtn');
+  const result = document.getElementById('route-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ Berechne…';
+  result.innerHTML = '<div class="card p-4 text-center text-slate-400">Route wird optimiert…</div>';
 
-function renderTechPanels(data) {
-  const container = document.getElementById('route-panels');
-  if (!data.technicians) { container.innerHTML = ''; return; }
-
-  let html = '<div class="grid gap-4 md:grid-cols-2">';
-
-  for (const tech of data.technicians) {
-    const color = tech.color || TECH_COLORS[tech.id] || '#888';
-    const orderCount = tech.orders?.length || 0;
-
-    html += `<div class="card overflow-hidden">
-      <div class="p-4 border-b border-dark-border" style="border-left: 4px solid ${color};">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-white font-bold text-lg" style="color:${color}">${esc(tech.name)}</div>
-            <div class="text-sm text-slate-400">${orderCount} Aufträge · ${tech.totalDistance} km · ${formatDuration(tech.totalDuration)}</div>
-          </div>
-          ${orderCount > 0 ? `<a href="${googleMapsUrl(tech)}" target="_blank" rel="noopener"
-            class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-medium transition-colors whitespace-nowrap">
-            📍 Google Maps
-          </a>` : ''}
-        </div>
-      </div>`;
-
-    if (orderCount === 0) {
-      html += '<div class="p-4 text-sm text-slate-500 text-center">Keine Aufträge zugeordnet</div>';
-    } else {
-      html += '<div class="divide-y divide-dark-border/50">';
-      tech.orders.forEach((o, idx) => {
-        html += `<div class="p-3 hover:bg-dark-hover">
-          <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white" style="background:${color}">${idx + 1}</div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
-                ${o.emergency ? '<span class="text-xs text-red-400">⚡</span>' : ''}
-              </div>
-              <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
-              <div class="text-xs text-slate-500 mt-0.5">${esc(o.craft || o.disturbanceType)}${o.telephone ? ' · ' + esc(o.telephone) : ''}</div>
-            </div>
-          </div>
-        </div>`;
-      });
-      html += '</div>';
-    }
-
-    html += '</div>';
+  try {
+    const res = await fetch('/api/routes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ techId: routeSelectedTech, orderIds: [...routeSelectedOrders] }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+    const data = await res.json();
+    renderRouteResult(data);
+  } catch (err) {
+    result.innerHTML = `<div class="card p-4 text-center text-red-400">❌ ${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🗺️ Route berechnen';
+    updateOptimizeBtn();
   }
-
-  html += '</div>';
-
-  // Summary
-  if (data.summary) {
-    html += `<div class="mt-4 card p-4">
-      <div class="flex items-center gap-4 text-sm text-slate-400">
-        <span>📊 ${data.summary.assigned} von ${data.summary.totalOrders} Aufträgen zugeordnet</span>
-        ${data.summary.unassignedCount > 0 ? `<span class="text-amber-400">⚠️ ${data.summary.unassignedCount} nicht zugeordnet</span>` : '<span class="text-green-400">✅ Alle zugeordnet</span>'}
-        <span class="ml-auto text-xs">Berechnet: ${new Date(data.summary.computedAt).toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'})}</span>
-      </div>
-    </div>`;
-  }
-
-  container.innerHTML = html;
 }
 
-function renderUnassigned(data) {
-  const container = document.getElementById('route-unassigned');
-  if (!data.unassigned || !data.unassigned.length) {
-    container.innerHTML = '';
+function renderRouteResult(data) {
+  const result = document.getElementById('route-result');
+  const tech = data.tech;
+  const orders = data.orders || [];
+  if (!orders.length) {
+    result.innerHTML = '<div class="card p-4 text-center text-slate-500">Keine Route berechnet</div>';
     return;
   }
 
-  let html = `<div class="mt-4 card p-4 border-amber-700">
-    <div class="text-amber-400 font-medium mb-3">⚠️ ${data.unassigned.length} Aufträge nicht zugeordnet</div>
-    <div class="space-y-2">`;
+  // Google Maps URL: start → waypoints → last stop
+  const origin = `${tech.home[1]},${tech.home[0]}`;
+  const waypoints = orders.slice(0, -1).map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
+  const lastOrder = orders[orders.length - 1];
+  const destination = `${lastOrder.coords[1]},${lastOrder.coords[0]}`;
+  let gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+  if (waypoints) gmapsUrl += `&waypoints=${waypoints}`;
 
-  for (const u of data.unassigned) {
-    html += `<div class="flex items-center gap-3 text-sm">
-      <span class="font-mono text-xs text-slate-400">${esc(u.sourceId)}</span>
-      <span class="text-white">${esc(u.renter)}</span>
-      <span class="text-slate-400">${esc(u.address)}</span>
-      <span class="text-xs text-red-400 ml-auto">${esc(u.reason)}</span>
+  let html = `<div class="card overflow-hidden" style="border-left: 4px solid ${tech.color}">
+    <div class="p-4 border-b border-dark-border flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <div class="text-white font-bold text-lg" style="color:${tech.color}">📋 Route: ${esc(tech.name)}</div>
+        <div class="text-sm text-slate-400">${orders.length} Aufträge · ${data.totalDistance} km · ${formatDuration(data.totalDuration)}</div>
+      </div>
+      <div class="flex gap-2">
+        <a href="${gmapsUrl}" target="_blank" rel="noopener"
+          class="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+          📍 In Google Maps öffnen
+        </a>
+        <button onclick="copyRouteText()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+          📋 Liste kopieren
+        </button>
+      </div>
+    </div>
+    <div class="divide-y divide-dark-border/50">`;
+
+  orders.forEach((o, idx) => {
+    html += `<div class="p-3">
+      <div class="flex items-start gap-3">
+        <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-content:center text-xs font-bold text-white" style="background:${tech.color};display:flex;align-items:center;justify-content:center">${idx + 1}</div>
+        <div class="flex-1">
+          <div class="text-white font-medium text-sm">${esc(o.renter)} ${o.emergency ? '<span class="text-red-400">⚡</span>' : ''}</div>
+          <div class="text-xs text-slate-400">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
+          <div class="text-xs text-slate-500">${esc(o.craft || o.disturbanceType)}${o.telephone ? ' · <a href="tel:'+esc(o.telephone)+'" class="text-blue-400">'+esc(o.telephone)+'</a>' : ''}</div>
+        </div>
+      </div>
     </div>`;
-  }
+  });
 
   html += '</div></div>';
-  container.innerHTML = html;
+
+  // Store for copy
+  window._lastRouteText = `Route ${tech.name} (${orders.length} Aufträge, ${data.totalDistance} km):\n` +
+    orders.map((o, i) => `${i+1}. ${o.renter} — ${o.street}, ${o.zipcode} ${o.city}${o.telephone ? ' (Tel: '+o.telephone+')' : ''}`).join('\n') +
+    `\n\nGoogle Maps: ${gmapsUrl}`;
+
+  result.innerHTML = html;
+
+  // Update map with optimized route
+  clearRouteMap();
+  showTechHomes();
+  if (!routeMap) return;
+
+  const allCoords = [[tech.home[1], tech.home[0]]];
+
+  // Draw actual road route if available
+  if (data.routeGeometry && data.routeGeometry.length > 1) {
+    const roadCoords = data.routeGeometry.map(c => [c[1], c[0]]);
+    const polyline = L.polyline(roadCoords, { color: tech.color, weight: 4, opacity: 0.8 }).addTo(routeMap);
+    routeMapLayers.push(polyline);
+    roadCoords.forEach(c => allCoords.push(c));
+  } else {
+    // Fallback: straight lines
+    const lineCoords = [[tech.home[1], tech.home[0]], ...orders.map(o => [o.coords[1], o.coords[0]])];
+    const polyline = L.polyline(lineCoords, { color: tech.color, weight: 3, opacity: 0.7, dashArray: '8 4' }).addTo(routeMap);
+    routeMapLayers.push(polyline);
+  }
+
+  // Numbered markers
+  orders.forEach((o, idx) => {
+    const latLng = [o.coords[1], o.coords[0]];
+    allCoords.push(latLng);
+    const icon = L.divIcon({
+      html: `<div style="background:${tech.color};color:#fff;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);">${idx + 1}</div>`,
+      className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+    });
+    const m = L.marker(latLng, { icon }).addTo(routeMap)
+      .bindPopup(`<strong>Stop ${idx+1}</strong><br>${esc(o.renter)}<br>${esc(o.street)}<br>${esc(o.zipcode)} ${esc(o.city)}`);
+    routeMapLayers.push(m);
+  });
+
+  routeMap.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
+}
+
+function copyRouteText() {
+  if (window._lastRouteText) {
+    navigator.clipboard.writeText(window._lastRouteText).then(() => {
+      const btn = event.target;
+      btn.textContent = '✅ Kopiert!';
+      setTimeout(() => btn.textContent = '📋 Liste kopieren', 2000);
+    });
+  }
 }
 
 function toggleExpand(i) {
