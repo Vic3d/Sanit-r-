@@ -62,7 +62,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v2.3.0</span>
+        <span class="text-xs text-slate-600 font-mono">v3.0.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -134,6 +134,86 @@ let sortField = 'date';
 let sortDir = 'desc';
 
 // ═══════════════════════════════════════════════════════════════
+// SHARED STATE — alle Tabs lesen + schreiben hier
+// ═══════════════════════════════════════════════════════════════
+const STATE = {
+  orders: [],           // enriched orders (with coords, distances, age, region, contactStatus)
+  assignments: {},      // { techId: [orderId, ...], unassigned: [...] }
+  ready: false,
+};
+
+// Build enriched orders from DATA — call after loadData()
+async function buildSharedState() {
+  if (!DATA?.orders) return;
+  const plzCoords = await loadPLZCoords();
+  const allRaw = [...(DATA.orders?.needContact || []), ...(DATA.orders?.contacted || [])];
+
+  STATE.orders = allRaw.map(o => {
+    const coords = plzCoords[o.Zipcode];
+    const distances = {};
+    if (coords) {
+      TECHS.forEach(t => { distances[t.id] = haversineKm(coords[0], coords[1], t.home[0], t.home[1]); });
+    }
+    const dateStr = o.DateOfReceipt ? o.DateOfReceipt.substring(0, 10) : '';
+    const age = dateStr ? Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000) : null;
+    const region = o._region || null;
+    const contacted = DATA.orders.contacted?.some(c => getSourceId(c) === getSourceId(o)) || false;
+
+    return {
+      id: getSourceId(o),
+      renter: o.Renter || '',
+      street: o.Street || '',
+      zipcode: o.Zipcode || '',
+      city: o.City || '',
+      telephone: o.Telephone || '',
+      craft: o.Craft || '',
+      damage: o.Damage || '',
+      disturbanceType: o.DisturbanceType || '',
+      emergency: o.Emergency === 1,
+      dateStr,
+      age,
+      region,
+      contacted,
+      distances,
+      coords,
+      // Keep raw for other tabs
+      _raw: o,
+    };
+  }).sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || ''));
+
+  // Init assignments if not set
+  if (!STATE.assignments._init) {
+    STATE.assignments = { _init: true, unassigned: STATE.orders.map(o => o.id) };
+    TECHS.forEach(t => { STATE.assignments[t.id] = []; });
+  }
+
+  STATE.ready = true;
+}
+
+// Get assignment for an order: returns tech or null
+function getAssignedTech(orderId) {
+  for (const t of TECHS) {
+    if (STATE.assignments[t.id]?.includes(orderId)) return t;
+  }
+  return null;
+}
+
+// Assign order to tech (used from any tab)
+function assignOrderToTech(orderId, techId) {
+  // Remove from all columns
+  for (const key of Object.keys(STATE.assignments)) {
+    if (key === '_init') continue;
+    const arr = STATE.assignments[key];
+    const idx = arr.indexOf(orderId);
+    if (idx !== -1) arr.splice(idx, 1);
+  }
+  // Add to target
+  const targetKey = techId === 'unassigned' ? 'unassigned' : parseInt(techId);
+  if (!STATE.assignments[targetKey]) STATE.assignments[targetKey] = [];
+  STATE.assignments[targetKey].push(orderId);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // DATA LOADING
 // ═══════════════════════════════════════════════════════════════
 async function loadData(force = false) {
@@ -147,6 +227,7 @@ async function loadData(force = false) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     DATA = await res.json();
     document.getElementById('loading').classList.add('hidden');
+    await buildSharedState();
     updateStats();
     renderCurrentTab();
     updateLastUpdate();
@@ -482,10 +563,20 @@ function renderRoutes() {
           ${techOptions}
         </select>
       </div>
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-slate-400">Anzeige:</label>
+        <select id="routeViewMode" onchange="loadRouteOrders()" class="bg-slate-800 border border-dark-border text-white rounded-lg px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+          <option value="assigned">🎯 Zugeordnete Aufträge</option>
+          <option value="all">📋 Alle Aufträge</option>
+          <option value="7d">🕐 Letzte 7 Tage</option>
+          <option value="14d">🕐 Letzte 14 Tage</option>
+          <option value="30d">🕐 Letzte 30 Tage</option>
+        </select>
+      </div>
       <div class="flex gap-2 ml-auto">
         <button onclick="loadRouteOrders()" id="loadOrdersBtn"
           class="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
-          📥 Aufträge laden
+          🔄 Aktualisieren
         </button>
         <button onclick="optimizeSelectedRoute()" id="optimizeBtn" disabled
           class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors">
@@ -494,35 +585,19 @@ function renderRoutes() {
       </div>
     </div>
 
-    <!-- Row 2: Filter + Sortierung -->
+    <!-- Row 2: Sortierung + Info -->
     <div class="card p-3 mb-3 flex flex-wrap items-center gap-3">
-      <div class="flex items-center gap-2">
-        <label class="text-sm text-slate-400">Zeitraum:</label>
-        <select id="routeTimeFilter" onchange="loadRouteOrders()" class="bg-slate-800 border border-dark-border text-white rounded-lg px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-          <option value="all">Alle Aufträge</option>
-          <option value="7d">Letzte 7 Tage</option>
-          <option value="14d">Letzte 14 Tage</option>
-          <option value="30d">Letzte 30 Tage</option>
-          <option value="90d">Letzte 90 Tage</option>
-          <option value="custom">Eigener Zeitraum…</option>
-        </select>
-      </div>
-      <div id="customDateRange" class="flex items-center gap-2" style="display:none">
-        <label class="text-sm text-slate-400">Von:</label>
-        <input type="date" id="routeDateFrom" value="" class="bg-slate-800 border border-dark-border text-white rounded-lg px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-        <label class="text-sm text-slate-400">Bis:</label>
-        <input type="date" id="routeDateTo" value="" class="bg-slate-800 border border-dark-border text-white rounded-lg px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-      </div>
-      <div class="flex items-center gap-1 ml-auto">
+      <div class="flex items-center gap-1">
         <span class="text-xs text-slate-500 mr-1">Sortierung:</span>
         <button onclick="setRouteSort('newest')" id="sort-newest" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='newest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">🕐 Neueste</button>
         <button onclick="setRouteSort('oldest')" id="sort-oldest" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='oldest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">📅 Älteste</button>
         <button onclick="setRouteSort('distance')" id="sort-distance" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='distance'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">📍 Nähe</button>
         <button onclick="setRouteSort('emergency')" id="sort-emergency" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='emergency'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">⚡ Notfälle</button>
       </div>
+      <div id="route-info" class="text-xs text-slate-400 ml-auto"></div>
     </div>
 
-    <!-- Row 3: Kapazitäts-Balken (nur wenn Monteur gewählt) -->
+    <!-- Kapazitäts-Balken -->
     <div id="tech-capacity" class="mb-3"></div>
 
     <!-- Map -->
@@ -535,15 +610,14 @@ function renderRoutes() {
 
     <!-- Order list -->
     <div id="route-order-list">
-      <div class="card p-8 text-center text-slate-500">Monteur auswählen → "Aufträge laden" (instant)</div>
+      <div class="card p-8 text-center text-slate-500">Monteur auswählen — Aufträge laden automatisch.<br><span class="text-xs">Tipp: Im Tagesplan zuordnen → hier "Zugeordnete Aufträge" wählen → Route berechnen</span></div>
     </div>`;
 
-  // Show/hide custom date range
-  document.getElementById('routeTimeFilter').addEventListener('change', function() {
-    document.getElementById('customDateRange').style.display = this.value === 'custom' ? 'flex' : 'none';
-  });
-
-  setTimeout(() => initRouteMap(), 100);
+  setTimeout(() => {
+    initRouteMap();
+    // Auto-load if state is ready and tech is selected
+    if (STATE.ready && routeSelectedTech) loadRouteOrders();
+  }, 100);
 
   setTimeout(() => initRouteMap(), 100);
 }
@@ -589,9 +663,9 @@ function onTechSelected() {
   document.getElementById('route-result').innerHTML = '';
   clearRouteMap();
   showTechHomes();
+  // Auto-load: if "Zugeordnete" view mode, load assigned orders
+  loadRouteOrders();
   updateOptimizeBtn();
-  // Re-render order list sorted by this tech
-  if (routeAllOrders) renderOrderList();
 }
 
 function updateOptimizeBtn() {
@@ -747,80 +821,45 @@ function haversineKm(lon1, lat1, lon2, lat2) {
   return Math.round(6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 10) / 10;
 }
 
-async function loadRouteOrders() {
-  const btn = document.getElementById('loadOrdersBtn');
+function loadRouteOrders() {
   const list = document.getElementById('route-order-list');
-  btn.disabled = true;
-  btn.textContent = '⏳ Lade…';
+  const infoEl = document.getElementById('route-info');
 
-  try {
-    const allRaw = [
-      ...(DATA.orders?.needContact || []),
-      ...(DATA.orders?.contacted || []),
-    ];
-
-    // Date filter (dropdown presets + custom)
-    const timeFilter = document.getElementById('routeTimeFilter')?.value || 'all';
-    let fromDate = '', toDate = '';
-    if (timeFilter === 'custom') {
-      fromDate = document.getElementById('routeDateFrom')?.value || '';
-      toDate = document.getElementById('routeDateTo')?.value || '';
-    } else if (timeFilter !== 'all') {
-      const days = parseInt(timeFilter);
-      const d = new Date(); d.setDate(d.getDate() - days);
-      fromDate = d.toISOString().split('T')[0];
-    }
-    const rawOrders = (!fromDate && !toDate) ? allRaw : allRaw.filter(o => {
-      if (!o.DateOfReceipt) return true;
-      const d = o.DateOfReceipt.substring(0, 10);
-      if (fromDate && d < fromDate) return false;
-      if (toDate && d > toDate) return false;
-      return true;
-    });
-
-    if (!rawOrders.length) {
-      list.innerHTML = '<div class="card p-8 text-center text-slate-500">Keine Aufträge — erst oben "Aktualisieren" klicken</div>';
-      return;
-    }
-
-    // Load PLZ coords from static JSON (instant, no API)
-    const plzCoords = await loadPLZCoords();
-    let missingPLZ = 0;
-
-    routeAllOrders = rawOrders.map((o, i) => {
-      const coords = plzCoords[o.Zipcode];
-      if (!coords) { missingPLZ++; return null; }
-      const distances = {};
-      TECHS.forEach(t => {
-        distances[t.id] = haversineKm(coords[0], coords[1], t.home[0], t.home[1]);
-      });
-      return {
-        id: getSourceId(o),
-        renter: o.Renter || '',
-        street: o.Street || '',
-        zipcode: o.Zipcode || '',
-        city: o.City || '',
-        telephone: o.Telephone || '',
-        craft: o.Craft || '',
-        disturbanceType: o.DisturbanceType || '',
-        damage: o.Damage || '',
-        emergency: o.Emergency === 1,
-        dateOfReceipt: o.DateOfReceipt || '',
-        executionDate: o.ExecutionDate || '',
-        coords,
-        distances,
-      };
-    }).filter(Boolean);
-
-    if (missingPLZ > 0) console.warn(`[Routen] ${missingPLZ} Aufträge ohne PLZ-Koordinate übersprungen`);
-    renderOrderList();
-  } catch (err) {
-    list.innerHTML = `<div class="card p-6 text-center"><div class="text-red-400 mb-2">❌ ${esc(err.message)}</div>
-      <button onclick="loadRouteOrders()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Erneut</button></div>`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '📥 Aufträge laden';
+  if (!STATE.ready) {
+    list.innerHTML = '<div class="card p-8 text-center text-slate-500">Erst oben "Aktualisieren" klicken</div>';
+    return;
   }
+
+  const viewMode = document.getElementById('routeViewMode')?.value || 'all';
+  let filtered;
+
+  if (viewMode === 'assigned' && routeSelectedTech) {
+    // Show orders assigned to this tech in Tagesplan
+    const assignedIds = STATE.assignments[routeSelectedTech] || [];
+    filtered = STATE.orders.filter(o => assignedIds.includes(o.id) && o.coords);
+    // Auto-select all assigned orders
+    routeSelectedOrders = new Set(filtered.map(o => o.id));
+  } else if (viewMode.endsWith('d')) {
+    const days = parseInt(viewMode);
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+    const cut = cutoff.toISOString().split('T')[0];
+    filtered = STATE.orders.filter(o => o.dateStr >= cut && o.coords);
+  } else {
+    filtered = STATE.orders.filter(o => o.coords);
+  }
+
+  routeAllOrders = filtered;
+
+  // Update info text
+  const assignedCount = routeSelectedTech ? (STATE.assignments[routeSelectedTech]?.length || 0) : 0;
+  if (infoEl) {
+    infoEl.innerHTML = `${filtered.length} Aufträge` +
+      (routeSelectedTech && assignedCount > 0 ? ` · <span class="text-emerald-400">${assignedCount} zugeordnet im Tagesplan</span>` : '') +
+      (viewMode === 'assigned' && assignedCount === 0 ? ' · <span class="text-amber-400">Noch keine Zuordnung — erst im Tagesplan zuordnen</span>' : '');
+  }
+
+  renderOrderList();
+  showSelectedOnMap();
 }
 
 function renderOrderList() {
@@ -856,10 +895,12 @@ function renderOrderList() {
       <div class="flex items-center gap-3">
         <input type="checkbox" id="cb-${esc(o.id)}" ${checked ? 'checked' : ''} class="w-4 h-4 accent-blue-500 pointer-events-none" tabindex="-1">
         <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             ${o.emergency ? '<span class="text-red-400 font-bold text-xs px-1.5 py-0.5 bg-red-900/50 rounded">⚡ NOTFALL</span>' : ''}
             <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
             ${ageText ? `<span class="text-xs ${age > 14 ? 'text-amber-400' : 'text-slate-500'}">${ageText}</span>` : ''}
+            ${(() => { const at = getAssignedTech(o.id); return at ? `<span class="text-xs px-1.5 py-0.5 rounded" style="background:${at.color}22;color:${at.color}">👷 ${esc(at.name)}</span>` : ''; })()}
+            ${o.contacted ? '<span class="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-400">✅ Kontaktiert</span>' : ''}
           </div>
           <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
           <div class="text-xs text-slate-500">${esc(o.craft || '')}${o.damage ? ' — ' + esc(o.damage.substring(0, 60)) : o.disturbanceType ? ' — ' + esc(o.disturbanceType) : ''}${o.telephone ? ' · <a href="tel:'+esc(o.telephone.replace(/[^\\d+]/g,''))+'" class="text-blue-400" onclick="event.stopPropagation()">'+esc(o.telephone)+'</a>' : ''}</div>
@@ -1119,9 +1160,10 @@ function applyPlannerFilter() {
     plannerFiltered = [...plannerOrders];
   }
 
-  // Reset assignments for filtered set
-  plannerAssignments = { _init: true, unassigned: plannerFiltered.map(o => o.id) };
-  TECHS.forEach(t => { plannerAssignments[t.id] = []; });
+  // Reset shared assignments for filtered set
+  STATE.assignments = { _init: true, unassigned: plannerFiltered.map(o => o.id) };
+  TECHS.forEach(t => { STATE.assignments[t.id] = []; });
+  plannerAssignments = { ...STATE.assignments };
 }
 
 function setPlannerFilter(f) {
@@ -1171,12 +1213,12 @@ function renderPlannerBoard() {
   html += `<div class="grid gap-3" style="grid-template-columns: repeat(${TECHS.length + 1}, minmax(180px, 1fr)); overflow-x: auto;">`;
 
   // Unassigned column
-  const unassigned = (plannerAssignments.unassigned || []).map(id => plannerFiltered.find(o => o.id === id)).filter(Boolean);
+  const unassigned = (STATE.assignments.unassigned || []).map(id => plannerFiltered.find(o => o.id === id)).filter(Boolean);
   html += renderPlannerColumn('unassigned', '📥 Offen', '#64748b', unassigned, null);
 
   // Tech columns
   TECHS.forEach(t => {
-    const assigned = (plannerAssignments[t.id] || []).map(id => plannerFiltered.find(o => o.id === id)).filter(Boolean);
+    const assigned = (STATE.assignments[t.id] || []).map(id => plannerFiltered.find(o => o.id === id)).filter(Boolean);
     html += renderPlannerColumn(t.id, `${t.name}`, t.color, assigned, t);
   });
 
@@ -1260,24 +1302,18 @@ function initPlannerDragDrop() {
 }
 
 function moveOrderToColumn(orderId, targetCol) {
-  // Remove from current column
-  for (const key of Object.keys(plannerAssignments)) {
-    if (key === '_init') continue;
-    const arr = plannerAssignments[key];
-    const idx = arr.indexOf(orderId);
-    if (idx !== -1) arr.splice(idx, 1);
-  }
-  // Add to target
-  const targetKey = targetCol === 'unassigned' ? 'unassigned' : parseInt(targetCol);
-  if (!plannerAssignments[targetKey]) plannerAssignments[targetKey] = [];
-  plannerAssignments[targetKey].push(orderId);
+  // Update BOTH planner local state AND shared STATE
+  assignOrderToTech(orderId, targetCol); // shared state
+
+  // Sync planner local from shared
+  plannerAssignments = { ...STATE.assignments };
   renderPlannerBoard();
 }
 
 function autoAssignPlanner() {
   // Smart assignment: Region → Cluster → Nearest → Capacity
-  plannerAssignments = { _init: true, unassigned: [] };
-  TECHS.forEach(t => { plannerAssignments[t.id] = []; });
+  STATE.assignments = { _init: true, unassigned: [] };
+  TECHS.forEach(t => { STATE.assignments[t.id] = []; });
 
   const MAX_JOBS = 8;
 
@@ -1319,7 +1355,7 @@ function autoAssignPlanner() {
     // Find best tech: preferred region + closest + has capacity
     let bestTech = null, bestScore = Infinity;
     for (const tid of [...preferredTechs, ...TECHS.map(t => t.id)]) {
-      if (plannerAssignments[tid].length + cluster.length > MAX_JOBS) continue;
+      if (STATE.assignments[tid].length + cluster.length > MAX_JOBS) continue;
       const dist = sample.distances?.[tid] || 999;
       const regionBonus = preferredTechs.includes(tid) ? 0 : 50; // penalty for wrong region
       const score = dist + regionBonus;
@@ -1334,23 +1370,26 @@ function autoAssignPlanner() {
         return (a.distances?.[bestTech] || 999) - (b.distances?.[bestTech] || 999);
       });
       for (const o of cluster) {
-        if (plannerAssignments[bestTech].length < MAX_JOBS) {
-          plannerAssignments[bestTech].push(o.id);
+        if (STATE.assignments[bestTech].length < MAX_JOBS) {
+          STATE.assignments[bestTech].push(o.id);
         } else {
-          plannerAssignments.unassigned.push(o.id);
+          STATE.assignments.unassigned.push(o.id);
         }
       }
     } else {
-      cluster.forEach(o => plannerAssignments.unassigned.push(o.id));
+      cluster.forEach(o => STATE.assignments.unassigned.push(o.id));
     }
   }
 
+  // Sync to shared + local
+  plannerAssignments = { ...STATE.assignments };
   renderPlannerBoard();
 }
 
 function resetPlanner() {
-  plannerAssignments = { _init: true, unassigned: plannerFiltered.map(o => o.id) };
-  TECHS.forEach(t => { plannerAssignments[t.id] = []; });
+  STATE.assignments = { _init: true, unassigned: plannerFiltered.map(o => o.id) };
+  TECHS.forEach(t => { STATE.assignments[t.id] = []; });
+  plannerAssignments = { ...STATE.assignments };
   renderPlannerBoard();
 }
 
@@ -1358,7 +1397,7 @@ function exportPlannerRoutes() {
   let text = '📋 TAGESPLAN — Gebr. Schutzeichel\n' + new Date().toLocaleDateString('de-DE', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) + '\n\n';
 
   TECHS.forEach(t => {
-    const assigned = (plannerAssignments[t.id] || []).map(id => plannerOrders.find(o => o.id === id)).filter(Boolean);
+    const assigned = (STATE.assignments[t.id] || []).map(id => plannerOrders.find(o => o.id === id)).filter(Boolean);
     if (!assigned.length) return;
     text += `👷 *${t.name}* (${t.city}) — ${assigned.length} Aufträge\n`;
     assigned.forEach((o, i) => {
@@ -1379,7 +1418,7 @@ function exportPlannerRoutes() {
     text += '\n';
   });
 
-  const unassigned = (plannerAssignments.unassigned || []).length;
+  const unassigned = (STATE.assignments.unassigned || []).length;
   if (unassigned > 0) text += `⚠️ ${unassigned} Aufträge nicht zugeordnet\n`;
 
   navigator.clipboard.writeText(text).then(() => {
@@ -1416,10 +1455,16 @@ function renderTechs() {
     for (const t of regionTechs) {
       const pct = maxJobs > 0 ? Math.round((t.jobs / maxJobs) * 100) : 0;
       const isMin = t.name === minJobsTech.name && regionTechs.length > 1 && minJobsTech.jobs < maxJobsTech.jobs;
+      // Show Tagesplan assignments
+      const techObj = TECHS.find(tc => tc.name.includes(t.name.split(' ')[0]));
+      const assignedCount = techObj ? (STATE.assignments[techObj.id]?.length || 0) : 0;
       h += `<div>
         <div class="flex justify-between items-center mb-1">
           <span class="text-white font-medium">${esc(t.name)} ${isMin ? '⭐' : ''}</span>
-          <span class="text-sm ${isMin ? 'text-green-400' : 'text-slate-400'}">${t.jobs} Jobs</span>
+          <div class="flex items-center gap-3">
+            ${assignedCount > 0 ? `<span class="text-xs px-2 py-0.5 rounded bg-emerald-900/50 text-emerald-400">📋 ${assignedCount} im Tagesplan</span>` : ''}
+            <span class="text-sm ${isMin ? 'text-green-400' : 'text-slate-400'}">${t.jobs} offene Jobs</span>
+          </div>
         </div>
         <div class="progress-bar">
           <div class="progress-fill ${colorFill}" style="width: ${pct}%"></div>
