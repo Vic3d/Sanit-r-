@@ -24,10 +24,13 @@ async function fetchJSON(url, options = {}) {
 
 async function geocodeAddress(address) {
   if (geocodeCache[address]) return geocodeCache[address];
-  const url = `${ORS_BASE}/geocode/search?api_key=${ORS_KEY}&text=${encodeURIComponent(address)}&boundary.country=DE&size=1`;
-  const data = await fetchJSON(url);
-  if (data.features && data.features.length > 0) {
-    const coords = data.features[0].geometry.coordinates; // [lng, lat]
+  // Use Nominatim (free, no API key) instead of ORS Geocoding
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=de&limit=1`;
+  const data = await fetchJSON(url, {
+    headers: { 'User-Agent': 'SchutzeichelDashboard/1.0' }
+  });
+  if (data && data.length > 0) {
+    const coords = [parseFloat(data[0].lon), parseFloat(data[0].lat)]; // [lng, lat]
     geocodeCache[address] = coords;
     return coords;
   }
@@ -78,7 +81,7 @@ module.exports = async (req, res) => {
           const coords = await geocodeAddress(`${plz}, Deutschland`);
           if (coords) plzCoords[plz] = coords;
         } catch (e) { /* skip */ }
-        if (i < uniquePLZs.length - 1) await new Promise(r => setTimeout(r, 80));
+        if (i < uniquePLZs.length - 1) await new Promise(r => setTimeout(r, 1100));
       }
 
       // Build order list using PLZ coordinates
@@ -134,7 +137,7 @@ module.exports = async (req, res) => {
         } catch (e) {
           errors.push({ plz, error: e.message });
         }
-        if (i < plzList.length - 1) await new Promise(r => setTimeout(r, 80));
+        if (i < plzList.length - 1) await new Promise(r => setTimeout(r, 1100));
       }
       return res.json({ plzCoords, count: Object.keys(plzCoords).length, requested: plzList.length, errors: errors.slice(0, 5), keyPreview });
     }
@@ -158,7 +161,7 @@ module.exports = async (req, res) => {
           if (coords) {
             selected.push({ order, coords, address });
           }
-          if (!geocodeCache[address]) await new Promise(r => setTimeout(r, 80));
+          if (!geocodeCache[address]) await new Promise(r => setTimeout(r, 1100));
         }
       }
 
