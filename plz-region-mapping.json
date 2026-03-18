@@ -1,0 +1,766 @@
+{
+  "31789": {
+    "region": "Nord",
+    "city": "Hameln"
+  },
+  "33330": {
+    "region": "Nord",
+    "city": "Gütersloh"
+  },
+  "33334": {
+    "region": "Nord",
+    "city": "Gütersloh"
+  },
+  "33378": {
+    "region": "Nord",
+    "city": "Rheda-Wiedenbrück"
+  },
+  "33609": {
+    "region": "Nord",
+    "city": "Bielefeld"
+  },
+  "33611": {
+    "region": "Nord",
+    "city": "Bielefeld"
+  },
+  "33613": {
+    "region": "Nord",
+    "city": "Bielefeld"
+  },
+  "33619": {
+    "region": "Nord",
+    "city": "Bielefeld"
+  },
+  "40225": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40227": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40235": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40237": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40468": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40472": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40479": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40489": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40549": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40595": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40599": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40625": {
+    "region": "Ost",
+    "city": "Düsseldorf"
+  },
+  "40699": {
+    "region": "Ost",
+    "city": "Erkrath"
+  },
+  "40789": {
+    "region": "Ost",
+    "city": "Monheim am Rhein"
+  },
+  "40822": {
+    "region": "Ost",
+    "city": "Mettmann"
+  },
+  "40878": {
+    "region": "Ost",
+    "city": "Ratingen"
+  },
+  "40880": {
+    "region": "Ost",
+    "city": "Ratingen"
+  },
+  "41061": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41063": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41065": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41066": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41068": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41169": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41179": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41189": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41199": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41236": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41238": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41239": {
+    "region": "Ost",
+    "city": "Mönchengladbach"
+  },
+  "41469": {
+    "region": "Ost",
+    "city": "Neuss"
+  },
+  "41836": {
+    "region": "Ost",
+    "city": "Hückelhoven"
+  },
+  "42117": {
+    "region": "Ost",
+    "city": "Wuppertal"
+  },
+  "42555": {
+    "region": "Ost",
+    "city": "Velbert"
+  },
+  "42655": {
+    "region": "Ost",
+    "city": "Solingen"
+  },
+  "42897": {
+    "region": "Ost",
+    "city": "Remscheid"
+  },
+  "42899": {
+    "region": "Ost",
+    "city": "Remscheid"
+  },
+  "44137": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44139": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44141": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44143": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44145": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44147": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44149": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44263": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44265": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44287": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44319": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44328": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44329": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44339": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44357": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44359": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44369": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44379": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44388": {
+    "region": "Ost",
+    "city": "Dortmund"
+  },
+  "44532": {
+    "region": "Ost",
+    "city": "Lünen"
+  },
+  "44534": {
+    "region": "Ost",
+    "city": "Lünen"
+  },
+  "44536": {
+    "region": "Ost",
+    "city": "Lünen"
+  },
+  "44575": {
+    "region": "Ost",
+    "city": "Castrop-Rauxel"
+  },
+  "44577": {
+    "region": "Ost",
+    "city": "Castrop-Rauxel"
+  },
+  "44579": {
+    "region": "Ost",
+    "city": "Castrop-Rauxel"
+  },
+  "44581": {
+    "region": "Ost",
+    "city": "Castrop-Rauxel"
+  },
+  "44623": {
+    "region": "Ost",
+    "city": "Herne"
+  },
+  "44625": {
+    "region": "Ost",
+    "city": "Herne"
+  },
+  "44627": {
+    "region": "Ost",
+    "city": "Herne"
+  },
+  "44628": {
+    "region": "Ost",
+    "city": "Herne"
+  },
+  "44649": {
+    "region": "Ost",
+    "city": "Herne"
+  },
+  "44651": {
+    "region": "Ost",
+    "city": "Herne"
+  },
+  "44652": {
+    "region": "Ost",
+    "city": "Herne"
+  },
+  "44653": {
+    "region": "Ost",
+    "city": "Herne"
+  },
+  "44799": {
+    "region": "Ost",
+    "city": "Bochum"
+  },
+  "44803": {
+    "region": "Ost",
+    "city": "Bochum"
+  },
+  "44807": {
+    "region": "Ost",
+    "city": "Bochum"
+  },
+  "44809": {
+    "region": "Ost",
+    "city": "Bochum"
+  },
+  "44866": {
+    "region": "Ost",
+    "city": "Bochum"
+  },
+  "44892": {
+    "region": "Ost",
+    "city": "Bochum"
+  },
+  "44894": {
+    "region": "Ost",
+    "city": "Bochum"
+  },
+  "45127": {
+    "region": "Ost",
+    "city": "Essen"
+  },
+  "45141": {
+    "region": "Ost",
+    "city": "Essen"
+  },
+  "45143": {
+    "region": "Ost",
+    "city": "Essen"
+  },
+  "45144": {
+    "region": "Ost",
+    "city": "Essen"
+  },
+  "45145": {
+    "region": "Ost",
+    "city": "Essen"
+  },
+  "45525": {
+    "region": "Ost",
+    "city": "Hattingen"
+  },
+  "45699": {
+    "region": "Ost",
+    "city": "Herten"
+  },
+  "45701": {
+    "region": "Ost",
+    "city": "Herten"
+  },
+  "45731": {
+    "region": "Ost",
+    "city": "Waltrop"
+  },
+  "45768": {
+    "region": "Ost",
+    "city": "Marl"
+  },
+  "45772": {
+    "region": "Ost",
+    "city": "Marl"
+  },
+  "45886": {
+    "region": "Ost",
+    "city": "Gelsenkirchen"
+  },
+  "45888": {
+    "region": "Ost",
+    "city": "Gelsenkirchen"
+  },
+  "45896": {
+    "region": "Ost",
+    "city": "Gelsenkirchen"
+  },
+  "45899": {
+    "region": "Ost",
+    "city": "Gelsenkirchen"
+  },
+  "46049": {
+    "region": "Ost",
+    "city": "Oberhausen"
+  },
+  "46117": {
+    "region": "Ost",
+    "city": "Oberhausen"
+  },
+  "46284": {
+    "region": "Ost",
+    "city": "Dorsten"
+  },
+  "46562": {
+    "region": "Ost",
+    "city": "Voerde"
+  },
+  "47059": {
+    "region": "Ost",
+    "city": "Duisburg"
+  },
+  "47167": {
+    "region": "Ost",
+    "city": "Duisburg"
+  },
+  "47228": {
+    "region": "Ost",
+    "city": "Duisburg"
+  },
+  "47229": {
+    "region": "Ost",
+    "city": "Duisburg"
+  },
+  "47259": {
+    "region": "Ost",
+    "city": "Duisburg"
+  },
+  "47804": {
+    "region": "Ost",
+    "city": "Krefeld"
+  },
+  "47807": {
+    "region": "Ost",
+    "city": "Krefeld"
+  },
+  "47829": {
+    "region": "Ost",
+    "city": "Krefeld"
+  },
+  "48147": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48149": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48151": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48153": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48155": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48157": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48159": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48161": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48165": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48167": {
+    "region": "Nord",
+    "city": "Münster"
+  },
+  "48291": {
+    "region": "Nord",
+    "city": "Telgte"
+  },
+  "48431": {
+    "region": "Ost",
+    "city": "Rheine"
+  },
+  "49086": {
+    "region": "Nord",
+    "city": "Osnabrück"
+  },
+  "50126": {
+    "region": "Ost",
+    "city": "Bergheim"
+  },
+  "50389": {
+    "region": "Ost",
+    "city": "Wesseling"
+  },
+  "50735": {
+    "region": "Ost",
+    "city": "Köln"
+  },
+  "50737": {
+    "region": "Ost",
+    "city": "Köln"
+  },
+  "50739": {
+    "region": "Ost",
+    "city": "Köln"
+  },
+  "50829": {
+    "region": "Ost",
+    "city": "Köln"
+  },
+  "51107": {
+    "region": "Ost",
+    "city": "Köln"
+  },
+  "51143": {
+    "region": "Ost",
+    "city": "Köln"
+  },
+  "51377": {
+    "region": "Ost",
+    "city": "Leverkusen"
+  },
+  "51379": {
+    "region": "Ost",
+    "city": "Leverkusen"
+  },
+  "51645": {
+    "region": "Ost",
+    "city": "Gummersbach"
+  },
+  "52078": {
+    "region": "Ost",
+    "city": "Aachen"
+  },
+  "53115": {
+    "region": "Ost",
+    "city": "Bonn"
+  },
+  "53121": {
+    "region": "Ost",
+    "city": "Bonn"
+  },
+  "53721": {
+    "region": "Ost",
+    "city": "Siegburg"
+  },
+  "53844": {
+    "region": "Ost",
+    "city": "Troisdorf"
+  },
+  "58089": {
+    "region": "Ost",
+    "city": "Hagen"
+  },
+  "58091": {
+    "region": "Ost",
+    "city": "Hagen"
+  },
+  "58097": {
+    "region": "Ost",
+    "city": "Hagen"
+  },
+  "58099": {
+    "region": "Ost",
+    "city": "Hagen"
+  },
+  "58119": {
+    "region": "Ost",
+    "city": "Hagen"
+  },
+  "58239": {
+    "region": "Ost",
+    "city": "Schwerte"
+  },
+  "58300": {
+    "region": "Ost",
+    "city": "Wetter"
+  },
+  "58313": {
+    "region": "Ost",
+    "city": "Herdecke"
+  },
+  "58452": {
+    "region": "Ost",
+    "city": "Witten"
+  },
+  "58453": {
+    "region": "Ost",
+    "city": "Witten"
+  },
+  "58455": {
+    "region": "Ost",
+    "city": "Witten"
+  },
+  "58456": {
+    "region": "Ost",
+    "city": "Witten"
+  },
+  "58509": {
+    "region": "Ost",
+    "city": "Lüdenscheid"
+  },
+  "58511": {
+    "region": "Ost",
+    "city": "Lüdenscheid"
+  },
+  "58515": {
+    "region": "Ost",
+    "city": "Lüdenscheid"
+  },
+  "58638": {
+    "region": "Ost",
+    "city": "Iserlohn"
+  },
+  "58642": {
+    "region": "Ost",
+    "city": "Iserlohn"
+  },
+  "58644": {
+    "region": "Ost",
+    "city": "Iserlohn"
+  },
+  "58675": {
+    "region": "Ost",
+    "city": "Hemer"
+  },
+  "58706": {
+    "region": "Ost",
+    "city": "Menden"
+  },
+  "58708": {
+    "region": "Ost",
+    "city": "Menden"
+  },
+  "58710": {
+    "region": "Ost",
+    "city": "Menden"
+  },
+  "58769": {
+    "region": "Ost",
+    "city": "Nachrodt-Wiblingwerde"
+  },
+  "58809": {
+    "region": "Ost",
+    "city": "Neuenrade"
+  },
+  "58840": {
+    "region": "Ost",
+    "city": "Plettenberg"
+  },
+  "58849": {
+    "region": "Ost",
+    "city": "Herscheid"
+  },
+  "59063": {
+    "region": "Nord",
+    "city": "Hamm"
+  },
+  "59065": {
+    "region": "Nord",
+    "city": "Hamm"
+  },
+  "59067": {
+    "region": "Nord",
+    "city": "Hamm"
+  },
+  "59071": {
+    "region": "Nord",
+    "city": "Hamm"
+  },
+  "59073": {
+    "region": "Nord",
+    "city": "Hamm"
+  },
+  "59075": {
+    "region": "Nord",
+    "city": "Hamm"
+  },
+  "59077": {
+    "region": "Nord",
+    "city": "Hamm"
+  },
+  "59174": {
+    "region": "Ost",
+    "city": "Kamen"
+  },
+  "59192": {
+    "region": "Ost",
+    "city": "Bergkamen"
+  },
+  "59199": {
+    "region": "Ost",
+    "city": "Bönen"
+  },
+  "59227": {
+    "region": "Nord",
+    "city": "Ahlen"
+  },
+  "59229": {
+    "region": "Nord",
+    "city": "Ahlen"
+  },
+  "59368": {
+    "region": "Ost",
+    "city": "Werne"
+  },
+  "59423": {
+    "region": "Ost",
+    "city": "Unna"
+  },
+  "59425": {
+    "region": "Ost",
+    "city": "Unna"
+  },
+  "59427": {
+    "region": "Ost",
+    "city": "Unna"
+  },
+  "59439": {
+    "region": "Ost",
+    "city": "Holzwickede"
+  },
+  "59457": {
+    "region": "Ost",
+    "city": "Werl"
+  },
+  "59494": {
+    "region": "Ost",
+    "city": "Soest"
+  },
+  "59555": {
+    "region": "Ost",
+    "city": "Lippstadt"
+  },
+  "59557": {
+    "region": "Ost",
+    "city": "Lippstadt"
+  },
+  "59590": {
+    "region": "Ost",
+    "city": "Geseke"
+  },
+  "59755": {
+    "region": "Ost",
+    "city": "Arnsberg"
+  },
+  "59821": {
+    "region": "Ost",
+    "city": "Arnsberg"
+  }
+}

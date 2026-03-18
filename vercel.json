@@ -3,12 +3,14 @@
   "rewrites": [
     { "source": "/api/state", "destination": "/api/state" },
     { "source": "/api/accept", "destination": "/api/accept" },
+    { "source": "/api/routes", "destination": "/api/routes" },
     { "source": "/api/webhook/superchat", "destination": "/api/webhook/superchat" },
     { "source": "/(.*)", "destination": "/public/index.html" }
   ],
   "functions": {
     "api/state.js": { "maxDuration": 30 },
     "api/accept.js": { "maxDuration": 20 },
+    "api/routes.js": { "maxDuration": 60 },
     "api/webhook/superchat.js": { "maxDuration": 10 }
   }
 }

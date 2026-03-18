@@ -19,6 +19,7 @@ const path = require('path');
 
 const stateHandler = require('./api/state');
 const acceptHandler = require('./api/accept');
+const routesHandler = require('./api/routes');
 
 const PORT = process.env.PORT || 3400;
 
@@ -41,6 +42,7 @@ const server = http.createServer(async (req, res) => {
   // API Routes
   if (url.pathname === '/api/state') return stateHandler(req, res);
   if (url.pathname === '/api/accept' && req.method === 'POST') return acceptHandler(req, res);
+  if (url.pathname === '/api/routes') return routesHandler(req, res);
 
   // Static Files
   let filePath = path.join(__dirname, 'public', url.pathname === '/' ? 'index.html' : url.pathname);

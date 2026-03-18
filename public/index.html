@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Schutzeichel Backoffice</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -36,6 +38,15 @@
     input[type="text"] { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; }
     input[type="text"]::placeholder { color: #64748b; }
     input[type="text"]:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.2); }
+    #route-map { height: 450px; width: 100%; border-radius: 0.75rem; z-index: 1; }
+    .leaflet-popup-content-wrapper { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    .leaflet-popup-tip { background: #1e293b; }
+    .leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
+    .leaflet-popup-content a { color: #60a5fa; }
+    .tech-marker { font-size: 20px; line-height: 1; text-align: center; }
+    .route-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 40px; }
+    .route-loading .spinner { width: 24px; height: 24px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="min-h-screen">
@@ -421,65 +432,296 @@ function renderContact() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TAB 3: ROUTEN / ADRESS-GRUPPEN
+// TAB 3: ROUTENPLANER
 // ═══════════════════════════════════════════════════════════════
+let routeMap = null;
+let routeData = null;
+let routeMapLayers = [];
+
+const TECH_COLORS = {
+  1: '#3b82f6', // Nico K - Blau
+  2: '#22c55e', // Nico W - Grün
+  3: '#f59e0b', // Adem - Orange
+  4: '#ef4444', // Ramiz - Rot
+};
+const TECH_NAMES = { 1: 'Nico Kussio', 2: 'Nico Walczak', 3: 'Adem', 4: 'Ramiz' };
+
 function renderRoutes() {
   const container = document.getElementById('content-routes');
-  const groups = DATA.addressGroups || [];
 
-  if (!groups.length) {
-    container.innerHTML = '<div class="card p-8 text-center text-slate-400">Keine Adress-Gruppen</div>';
-    return;
+  let html = `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-white">🗺️ Routenplaner</h2>
+      <button onclick="calculateRoutes()" id="calcRouteBtn"
+        class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+        🔄 Route berechnen
+      </button>
+    </div>
+    <div class="card mb-4 overflow-hidden">
+      <div id="route-map"></div>
+    </div>
+    <div id="route-panels"></div>
+    <div id="route-unassigned"></div>`;
+
+  container.innerHTML = html;
+
+  // Init map if not done
+  setTimeout(() => initRouteMap(), 100);
+
+  // If we have cached data, render it
+  if (routeData) {
+    renderRouteResults(routeData);
+  }
+}
+
+function initRouteMap() {
+  const mapEl = document.getElementById('route-map');
+  if (!mapEl) return;
+
+  if (routeMap) {
+    routeMap.remove();
+    routeMap = null;
   }
 
-  let html = '<div class="space-y-3">';
-  for (let i = 0; i < groups.length; i++) {
-    const g = groups[i];
-    const count = g.orders.length;
-    const multi = count > 1;
+  routeMap = L.map('route-map', {
+    center: [51.55, 8.1],
+    zoom: 9,
+    zoomControl: true,
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OSM &copy; CARTO',
+    maxZoom: 19,
+  }).addTo(routeMap);
+
+  // Add home markers for technicians
+  const techHomes = [
+    { name: 'Nico Kussio', home: [51.9069, 8.3858], color: '#3b82f6' },
+    { name: 'Nico Walczak', home: [51.3279, 8.0011], color: '#22c55e' },
+    { name: 'Adem', home: [51.3279, 8.0011], color: '#f59e0b' },
+    { name: 'Ramiz', home: [51.6739, 7.8159], color: '#ef4444' },
+  ];
+
+  for (const t of techHomes) {
+    const icon = L.divIcon({
+      html: `<div style="color:${t.color};font-size:24px;text-shadow:0 0 4px rgba(0,0,0,0.8);">🏠</div>`,
+      className: 'tech-marker',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+    L.marker(t.home, { icon }).addTo(routeMap)
+      .bindPopup(`<strong style="color:${t.color}">${t.name}</strong><br>Startpunkt`);
+  }
+
+  // Re-render cached data on map
+  if (routeData) renderMapMarkers(routeData);
+}
+
+async function calculateRoutes() {
+  const btn = document.getElementById('calcRouteBtn');
+  const panels = document.getElementById('route-panels');
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border:2px solid #94a3b8;border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;display:inline-block;"></div> Berechne…';
+  panels.innerHTML = '<div class="route-loading"><div class="spinner"></div><span class="text-slate-400">Routen werden berechnet (Geocoding + Optimierung)… Das kann 10-30 Sekunden dauern.</span></div>';
+
+  try {
+    const res = await fetch('/api/routes');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
+      throw new Error(err.error || 'Unbekannter Fehler');
+    }
+    routeData = await res.json();
+    renderRouteResults(routeData);
+  } catch (err) {
+    panels.innerHTML = `<div class="card p-6 text-center">
+      <div class="text-red-400 text-lg mb-2">❌ Fehler bei Routenberechnung</div>
+      <div class="text-slate-400 text-sm">${esc(err.message)}</div>
+      <button onclick="calculateRoutes()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Erneut versuchen</button>
+    </div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔄 Route berechnen';
+  }
+}
+
+function renderRouteResults(data) {
+  renderMapMarkers(data);
+  renderTechPanels(data);
+  renderUnassigned(data);
+}
+
+function renderMapMarkers(data) {
+  if (!routeMap) return;
+
+  // Clear previous markers/lines
+  for (const layer of routeMapLayers) {
+    routeMap.removeLayer(layer);
+  }
+  routeMapLayers = [];
+
+  const allCoords = [];
+
+  for (const tech of data.technicians) {
+    if (!tech.orders || !tech.orders.length) continue;
+    const color = tech.color || TECH_COLORS[tech.id] || '#888';
+
+    // Draw polyline: home → orders → home
+    const lineCoords = [
+      [tech.home[1], tech.home[0]], // home [lng,lat] → [lat,lng] for Leaflet
+      ...tech.orders.map(o => [o.coords[1], o.coords[0]]),
+      [tech.home[1], tech.home[0]], // back home
+    ];
+
+    const polyline = L.polyline(lineCoords, {
+      color: color,
+      weight: 3,
+      opacity: 0.7,
+      dashArray: '8 4',
+    }).addTo(routeMap);
+    routeMapLayers.push(polyline);
+
+    // Order markers
+    tech.orders.forEach((o, idx) => {
+      const latLng = [o.coords[1], o.coords[0]];
+      allCoords.push(latLng);
+
+      const icon = L.divIcon({
+        html: `<div style="background:${color};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);">${idx + 1}</div>`,
+        className: '',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+
+      const marker = L.marker(latLng, { icon }).addTo(routeMap)
+        .bindPopup(`
+          <div style="min-width:180px">
+            <strong style="color:${color}">${esc(tech.name)}</strong> — Stop ${idx + 1}<br>
+            <strong>${esc(o.renter)}</strong><br>
+            ${esc(o.street)}<br>
+            ${esc(o.zipcode)} ${esc(o.city)}<br>
+            <span style="color:#94a3b8">${esc(o.craft || o.disturbanceType)}</span>
+            ${o.telephone ? `<br><a href="tel:${esc(o.telephone)}">${esc(o.telephone)}</a>` : ''}
+            ${o.emergency ? '<br><span style="color:#fca5a5">⚡ Notfall</span>' : ''}
+          </div>
+        `);
+      routeMapLayers.push(marker);
+    });
+  }
+
+  // Fit bounds to show all markers
+  if (allCoords.length) {
+    const bounds = L.latLngBounds(allCoords);
+    // Include home points
+    for (const tech of data.technicians) {
+      bounds.extend([tech.home[1], tech.home[0]]);
+    }
+    routeMap.fitBounds(bounds, { padding: [30, 30] });
+  }
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return '—';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}min`;
+  return `${m} min`;
+}
+
+function googleMapsUrl(tech) {
+  if (!tech.orders || !tech.orders.length) return '#';
+  const origin = `${tech.home[1]},${tech.home[0]}`;
+  const destination = origin; // return home
+  const waypoints = tech.orders.map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
+  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
+}
+
+function renderTechPanels(data) {
+  const container = document.getElementById('route-panels');
+  if (!data.technicians) { container.innerHTML = ''; return; }
+
+  let html = '<div class="grid gap-4 md:grid-cols-2">';
+
+  for (const tech of data.technicians) {
+    const color = tech.color || TECH_COLORS[tech.id] || '#888';
+    const orderCount = tech.orders?.length || 0;
 
     html += `<div class="card overflow-hidden">
-      <div class="p-4 cursor-pointer hover:bg-dark-hover flex items-center justify-between" onclick="toggleExpand(${i})">
-        <div class="flex items-center gap-3">
-          <span class="text-2xl font-bold ${multi ? 'text-amber-400' : 'text-slate-400'}">${count}</span>
+      <div class="p-4 border-b border-dark-border" style="border-left: 4px solid ${color};">
+        <div class="flex items-center justify-between">
           <div>
-            <div class="text-white font-medium">${esc(g.street)}</div>
-            <div class="text-sm text-slate-400">${esc(g.zipcode)} ${esc(g.city)}</div>
+            <div class="text-white font-bold text-lg" style="color:${color}">${esc(tech.name)}</div>
+            <div class="text-sm text-slate-400">${orderCount} Aufträge · ${tech.totalDistance} km · ${formatDuration(tech.totalDuration)}</div>
           </div>
+          ${orderCount > 0 ? `<a href="${googleMapsUrl(tech)}" target="_blank" rel="noopener"
+            class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-medium transition-colors whitespace-nowrap">
+            📍 Google Maps
+          </a>` : ''}
         </div>
-        <div class="flex items-center gap-2">
-          ${regionBadge(g.region)}
-          <svg id="expand-icon-${i}" class="w-5 h-5 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </div>
-      </div>
-      <div id="expand-${i}" class="expand-content">
-        <div class="border-t border-dark-border px-4 pb-4 pt-2 space-y-2">`;
-
-    for (const o of g.orders) {
-      html += `<div class="flex flex-col sm:flex-row sm:items-center gap-2 py-2 border-b border-dark-border/30 last:border-0">
-        <span class="font-mono text-xs text-slate-400 w-24">${o.Emergency === 1 ? '⚡ ' : ''}${esc(getSourceId(o))}</span>
-        <span class="text-white text-sm flex-1">${esc(o.Renter)}</span>
-        <span class="text-sm">${phoneLink(o.Telephone)}</span>
-        <span class="text-xs text-slate-500">${esc(o.Craft)}</span>
-        ${contactBadge(o._match?.matched)}
       </div>`;
+
+    if (orderCount === 0) {
+      html += '<div class="p-4 text-sm text-slate-500 text-center">Keine Aufträge zugeordnet</div>';
+    } else {
+      html += '<div class="divide-y divide-dark-border/50">';
+      tech.orders.forEach((o, idx) => {
+        html += `<div class="p-3 hover:bg-dark-hover">
+          <div class="flex items-start gap-3">
+            <div class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white" style="background:${color}">${idx + 1}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
+                ${o.emergency ? '<span class="text-xs text-red-400">⚡</span>' : ''}
+              </div>
+              <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
+              <div class="text-xs text-slate-500 mt-0.5">${esc(o.craft || o.disturbanceType)}${o.telephone ? ' · ' + esc(o.telephone) : ''}</div>
+            </div>
+          </div>
+        </div>`;
+      });
+      html += '</div>';
     }
 
-    html += '</div></div></div>';
+    html += '</div>';
   }
+
   html += '</div>';
 
   // Summary
-  const multiGroups = groups.filter(g => g.orders.length > 1);
-  if (multiGroups.length) {
-    html += `<div class="mt-4 card p-4 border-amber-700">
-      <div class="text-amber-400 font-medium">💡 ${multiGroups.length} Adressen mit mehreren Aufträgen</div>
-      <div class="text-sm text-slate-400 mt-1">Diese können zusammengelegt werden: ${multiGroups.reduce((s,g) => s + g.orders.length, 0)} Aufträge an ${multiGroups.length} Adressen</div>
+  if (data.summary) {
+    html += `<div class="mt-4 card p-4">
+      <div class="flex items-center gap-4 text-sm text-slate-400">
+        <span>📊 ${data.summary.assigned} von ${data.summary.totalOrders} Aufträgen zugeordnet</span>
+        ${data.summary.unassignedCount > 0 ? `<span class="text-amber-400">⚠️ ${data.summary.unassignedCount} nicht zugeordnet</span>` : '<span class="text-green-400">✅ Alle zugeordnet</span>'}
+        <span class="ml-auto text-xs">Berechnet: ${new Date(data.summary.computedAt).toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'})}</span>
+      </div>
     </div>`;
   }
 
+  container.innerHTML = html;
+}
+
+function renderUnassigned(data) {
+  const container = document.getElementById('route-unassigned');
+  if (!data.unassigned || !data.unassigned.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  let html = `<div class="mt-4 card p-4 border-amber-700">
+    <div class="text-amber-400 font-medium mb-3">⚠️ ${data.unassigned.length} Aufträge nicht zugeordnet</div>
+    <div class="space-y-2">`;
+
+  for (const u of data.unassigned) {
+    html += `<div class="flex items-center gap-3 text-sm">
+      <span class="font-mono text-xs text-slate-400">${esc(u.sourceId)}</span>
+      <span class="text-white">${esc(u.renter)}</span>
+      <span class="text-slate-400">${esc(u.address)}</span>
+      <span class="text-xs text-red-400 ml-auto">${esc(u.reason)}</span>
+    </div>`;
+  }
+
+  html += '</div></div>';
   container.innerHTML = html;
 }
 
