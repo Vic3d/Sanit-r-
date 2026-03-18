@@ -59,7 +59,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v1.2.0</span>
+        <span class="text-xs text-slate-600 font-mono">v1.3.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -619,14 +619,56 @@ async function loadRouteOrders() {
   const btn = document.getElementById('loadOrdersBtn');
   const list = document.getElementById('route-order-list');
   btn.disabled = true;
-  btn.textContent = '⏳ Laden…';
-  list.innerHTML = '<div class="card p-8 text-center text-slate-400"><div class="mb-2">Aufträge werden geladen und geocoded…</div><div class="text-xs text-slate-500">Das kann 10-30 Sekunden dauern (Geocoding aller Adressen)</div></div>';
+  btn.textContent = '⏳ Geocoding…';
+  list.innerHTML = '<div class="card p-8 text-center text-slate-400">Adressen werden geocoded… (nur PLZs, dauert ~5-10s)</div>';
 
   try {
-    const res = await fetch('/api/routes');
+    // Use already-loaded orders from DATA — no extra B&O call needed
+    const rawOrders = DATA.orders || [];
+    if (!rawOrders.length) {
+      list.innerHTML = '<div class="card p-8 text-center text-slate-500">Keine Aufträge geladen — erst "Aktualisieren" klicken</div>';
+      return;
+    }
+
+    // Extract unique PLZs
+    const uniquePLZs = [...new Set(rawOrders.map(o => o.Zipcode).filter(Boolean))];
+
+    // Geocode PLZs via API
+    const res = await fetch('/api/routes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'geocode', plzList: uniquePLZs }),
+    });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
-    const data = await res.json();
-    routeAllOrders = data.orders || [];
+    const { plzCoords } = await res.json();
+
+    // Build routeAllOrders from DATA + PLZ coords
+    routeAllOrders = rawOrders
+      .filter(o => o.Zipcode && plzCoords[o.Zipcode])
+      .map((o, i) => {
+        const coords = plzCoords[o.Zipcode];
+        const distances = {};
+        TECHS.forEach(t => {
+          const dLat = (coords[1] - t.home[1]) * Math.PI / 180;
+          const dLon = (coords[0] - t.home[0]) * Math.PI / 180;
+          const a = Math.sin(dLat/2)**2 + Math.cos(t.home[1]*Math.PI/180) * Math.cos(coords[1]*Math.PI/180) * Math.sin(dLon/2)**2;
+          distances[t.id] = Math.round(6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 10) / 10;
+        });
+        return {
+          id: getSourceId(o),
+          renter: o.Renter || '',
+          street: o.Street || '',
+          zipcode: o.Zipcode || '',
+          city: o.City || '',
+          telephone: o.Telephone || '',
+          craft: o.Craft || '',
+          disturbanceType: o.DisturbanceType || '',
+          emergency: o.Emergency === 1,
+          coords,
+          distances,
+        };
+      });
+
     renderOrderList();
   } catch (err) {
     list.innerHTML = `<div class="card p-6 text-center"><div class="text-red-400 mb-2">❌ ${esc(err.message)}</div>

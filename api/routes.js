@@ -52,11 +52,17 @@ module.exports = async (req, res) => {
   if (!ORS_KEY) return res.status(500).json({ error: 'ORS_API_KEY nicht konfiguriert' });
 
   try {
-    const { techId, orderIds } = req.method === 'POST'
+    const reqBody = req.method === 'POST'
       ? (typeof req.body === 'string' ? JSON.parse(req.body) : req.body) || {}
-      : req.query;
+      : {};
+    const { techId, orderIds } = reqBody;
 
-    // MODE 1: GET /api/routes — list all orders, geocode by PLZ only (fast!)
+    // MODE 1: GET /api/routes — kept for backwards compat but frontend now uses DATA directly
+    if (req.method === 'GET' && !orderIds) {
+      return res.json({ technicians: TECHNICIANS, orders: [], note: 'Use POST action=geocode instead' });
+    }
+
+    // MODE 1b (unused now but kept): GET /api/routes — list all orders, geocode by PLZ only (fast!)
     if (req.method === 'GET' && !orderIds) {
       const orders = await getOrders();
       if (!orders.length) return res.json({ technicians: TECHNICIANS, orders: [] });
@@ -109,7 +115,26 @@ module.exports = async (req, res) => {
       return res.json({ technicians: TECHNICIANS, orders: geocoded, failed, uniquePLZsGeocoded: Object.keys(plzCoords).length, computedAt: new Date().toISOString() });
     }
 
-    // MODE 2: POST /api/routes — optimize route for selected tech + orders
+    // MODE 2a: POST /api/routes {action:'geocode', plzList:[...]} — geocode PLZs only
+    const body = req.method === 'POST'
+      ? (typeof req.body === 'string' ? JSON.parse(req.body) : req.body) || {}
+      : {};
+
+    if (req.method === 'POST' && body.action === 'geocode') {
+      const plzList = body.plzList || [];
+      const plzCoords = {};
+      for (let i = 0; i < plzList.length; i++) {
+        const plz = plzList[i];
+        try {
+          const coords = await geocodeAddress(`${plz}, Deutschland`);
+          if (coords) plzCoords[plz] = coords;
+        } catch (e) { /* skip */ }
+        if (i < plzList.length - 1) await new Promise(r => setTimeout(r, 80));
+      }
+      return res.json({ plzCoords, count: Object.keys(plzCoords).length });
+    }
+
+    // MODE 2b: POST /api/routes — optimize route for selected tech + orders
     if (req.method === 'POST' && techId && orderIds) {
       const tid = parseInt(techId);
       const tech = TECHNICIANS.find(t => t.id === tid);
