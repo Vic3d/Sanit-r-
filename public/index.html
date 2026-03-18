@@ -71,45 +71,46 @@
       </div>
     </div>
 
-    <!-- Stats -->
-    <div id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-      <div class="card p-4 text-center">
-        <div class="text-2xl font-bold text-white" id="statTotal">-</div>
-        <div class="text-sm text-slate-400">Offen</div>
+    <!-- Stats (mini, im Header) -->
+    <div id="stats" class="grid grid-cols-3 gap-3 mb-4">
+      <div class="card p-3 text-center">
+        <div class="text-xl font-bold text-white" id="statTotal">-</div>
+        <div class="text-xs text-slate-400">Offen</div>
       </div>
-      <div class="card p-4 text-center">
-        <div class="text-2xl font-bold text-red-400" id="statNeedContact">-</div>
-        <div class="text-sm text-slate-400">Anschreiben</div>
+      <div class="card p-3 text-center">
+        <div class="text-xl font-bold text-red-400" id="statNeedContact">-</div>
+        <div class="text-xs text-slate-400">Anschreiben</div>
       </div>
-      <div class="card p-4 text-center">
-        <div class="text-2xl font-bold text-green-400" id="statContacted">-</div>
-        <div class="text-sm text-slate-400">Kontaktiert</div>
+      <div class="card p-3 text-center">
+        <div class="text-xl font-bold text-green-400" id="statContacted">-</div>
+        <div class="text-xs text-slate-400">Kontaktiert</div>
       </div>
-      <div class="card p-4 text-center">
-        <div class="text-2xl font-bold text-blue-400" id="statGroups">-</div>
-        <div class="text-sm text-slate-400">Adress-Gruppen</div>
-      </div>
+    </div>
+
+    <!-- Globale Suche -->
+    <div class="mb-4">
+      <input type="text" id="globalSearch" placeholder="🔍 Suche: Name, Adresse, PLZ, Telefon, Gewerk..." 
+        class="w-full px-4 py-2.5 rounded-lg text-sm" oninput="onGlobalSearch(this.value)">
     </div>
 
     <!-- Tabs -->
     <div class="flex gap-1 mb-4 overflow-x-auto pb-1">
+      <button onclick="switchTab('dashboard')" id="tab-dashboard"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-active">🏠 Start</button>
       <button onclick="switchTab('orders')" id="tab-orders"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-active">📋 Alle Aufträge</button>
-      <button onclick="switchTab('contact')" id="tab-contact"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📞 Anschreiben</button>
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📋 Aufträge</button>
+      <button onclick="switchTab('planner')" id="tab-planner"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📅 Planung</button>
       <button onclick="switchTab('routes')" id="tab-routes"
         class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">🗺️ Routen</button>
-      <button onclick="switchTab('planner')" id="tab-planner"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📋 Tagesplan</button>
-      <button onclick="switchTab('techs')" id="tab-techs"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">👷 Monteure</button>
     </div>
 
     <!-- Tab Content -->
-    <div id="content-orders"></div>
+    <div id="content-dashboard"></div>
+    <div id="content-orders" class="hidden"></div>
     <div id="content-contact" class="hidden"></div>
-    <div id="content-routes" class="hidden"></div>
     <div id="content-planner" class="hidden"></div>
+    <div id="content-routes" class="hidden"></div>
     <div id="content-techs" class="hidden"></div>
 
     <!-- Loading -->
@@ -128,7 +129,7 @@
 // STATE
 // ═══════════════════════════════════════════════════════════════
 let DATA = null;
-let currentTab = 'orders';
+let currentTab = 'dashboard';
 let searchQuery = '';
 let sortField = 'date';
 let sortDir = 'desc';
@@ -261,10 +262,11 @@ function updateStats() {
 // ═══════════════════════════════════════════════════════════════
 function switchTab(tab) {
   currentTab = tab;
-  ['orders', 'contact', 'routes', 'planner', 'techs'].forEach(t => {
-    document.getElementById('content-' + t).classList.toggle('hidden', t !== tab);
-    document.getElementById('tab-' + t).className =
-      `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${t === tab ? 'tab-active' : 'tab-inactive'}`;
+  ['dashboard', 'orders', 'contact', 'routes', 'planner', 'techs'].forEach(t => {
+    const el = document.getElementById('content-' + t);
+    if (el) el.classList.toggle('hidden', t !== tab);
+    const tabBtn = document.getElementById('tab-' + t);
+    if (tabBtn) tabBtn.className = `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${t === tab ? 'tab-active' : 'tab-inactive'}`;
   });
   renderCurrentTab();
 }
@@ -272,6 +274,7 @@ function switchTab(tab) {
 function renderCurrentTab() {
   if (!DATA) return;
   switch (currentTab) {
+    case 'dashboard': renderDashboard(); break;
     case 'orders': renderOrders(); break;
     case 'contact': renderContact(); break;
     case 'routes': renderRoutes(); break;
@@ -279,6 +282,238 @@ function renderCurrentTab() {
     case 'techs': renderTechs(); break;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// GLOBALE SUCHE
+// ═══════════════════════════════════════════════════════════════
+let globalSearchQuery = '';
+function onGlobalSearch(q) {
+  globalSearchQuery = q.toLowerCase().trim();
+  renderCurrentTab();
+}
+
+function matchesGlobalSearch(o) {
+  if (!globalSearchQuery) return true;
+  const q = globalSearchQuery;
+  const fields = [o.renter, o.street, o.zipcode, o.city, o.telephone, o.craft, o.damage, o.disturbanceType].filter(Boolean);
+  return fields.some(f => f.toLowerCase().includes(q));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATUS + NOTIZEN (localStorage)
+// ═══════════════════════════════════════════════════════════════
+const STATUS_LABELS = {
+  'neu':         { label: 'Neu',         color: '#ef4444', icon: '🔴' },
+  'kontaktiert': { label: 'Kontaktiert', color: '#f59e0b', icon: '🟡' },
+  'termin':      { label: 'Termin',      color: '#22c55e', icon: '🟢' },
+  'erledigt':    { label: 'Erledigt',    color: '#3b82f6', icon: '🔵' },
+  'abgerechnet': { label: 'Abgerechnet', color: '#94a3b8', icon: '⚪' },
+};
+
+function getOrderStatus(orderId) {
+  return localStorage.getItem('josh-status-' + orderId) || (STATE.orders?.find(o => o.id === orderId)?.contacted ? 'kontaktiert' : 'neu');
+}
+
+function setOrderStatus(orderId, status) {
+  localStorage.setItem('josh-status-' + orderId, status);
+  renderCurrentTab();
+}
+
+function getOrderNote(orderId) {
+  return localStorage.getItem('josh-note-' + orderId) || '';
+}
+
+function setOrderNote(orderId, note) {
+  localStorage.setItem('josh-note-' + orderId, note);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TAB: DASHBOARD (Start)
+// ═══════════════════════════════════════════════════════════════
+function renderDashboard() {
+  const container = document.getElementById('content-dashboard');
+  if (!STATE.ready) {
+    container.innerHTML = '<div class="card p-8 text-center text-slate-400">Erst "Aktualisieren" klicken</div>';
+    return;
+  }
+
+  const orders = STATE.orders.filter(o => matchesGlobalSearch(o));
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+
+  // KPIs
+  let neuCount = 0, kontaktiertCount = 0, terminCount = 0, erledigtCount = 0, notfallCount = 0, ueberfaelligCount = 0;
+  orders.forEach(o => {
+    const s = getOrderStatus(o.id);
+    if (s === 'neu') neuCount++;
+    else if (s === 'kontaktiert') kontaktiertCount++;
+    else if (s === 'termin') terminCount++;
+    else if (s === 'erledigt' || s === 'abgerechnet') erledigtCount++;
+    if (o.emergency) notfallCount++;
+    if (o.age > 7 && s !== 'erledigt' && s !== 'abgerechnet') ueberfaelligCount++;
+  });
+
+  let html = `
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+    <div class="card p-4 text-center cursor-pointer hover:border-red-500/50" onclick="dashFilter('neu')">
+      <div class="text-2xl font-bold text-red-400">${neuCount}</div>
+      <div class="text-xs text-slate-400">🔴 Neu</div>
+    </div>
+    <div class="card p-4 text-center cursor-pointer hover:border-amber-500/50" onclick="dashFilter('kontaktiert')">
+      <div class="text-2xl font-bold text-amber-400">${kontaktiertCount}</div>
+      <div class="text-xs text-slate-400">🟡 Kontaktiert</div>
+    </div>
+    <div class="card p-4 text-center cursor-pointer hover:border-green-500/50" onclick="dashFilter('termin')">
+      <div class="text-2xl font-bold text-green-400">${terminCount}</div>
+      <div class="text-xs text-slate-400">🟢 Termin</div>
+    </div>
+    <div class="card p-4 text-center cursor-pointer hover:border-blue-500/50" onclick="dashFilter('erledigt')">
+      <div class="text-2xl font-bold text-blue-400">${erledigtCount}</div>
+      <div class="text-xs text-slate-400">🔵 Erledigt</div>
+    </div>
+    <div class="card p-4 text-center cursor-pointer hover:border-red-500/50" onclick="dashFilter('notfall')">
+      <div class="text-2xl font-bold ${notfallCount > 0 ? 'text-red-400 animate-pulse' : 'text-slate-600'}">${notfallCount}</div>
+      <div class="text-xs text-slate-400">⚡ Notfälle</div>
+    </div>
+    <div class="card p-4 text-center cursor-pointer hover:border-amber-500/50" onclick="dashFilter('ueberfaellig')">
+      <div class="text-2xl font-bold ${ueberfaelligCount > 0 ? 'text-amber-400' : 'text-slate-600'}">${ueberfaelligCount}</div>
+      <div class="text-xs text-slate-400">⏰ Überfällig</div>
+    </div>
+  </div>`;
+
+  // Dringend: Notfälle + Überfällige
+  const urgent = orders.filter(o => {
+    const s = getOrderStatus(o.id);
+    return (o.emergency || o.age > 7) && s !== 'erledigt' && s !== 'abgerechnet';
+  }).sort((a, b) => {
+    if (a.emergency && !b.emergency) return -1;
+    if (!a.emergency && b.emergency) return 1;
+    return (b.age || 0) - (a.age || 0);
+  }).slice(0, 10);
+
+  if (urgent.length) {
+    html += `<h3 class="text-white font-bold mb-3">🚨 Sofort handeln</h3>
+    <div class="grid gap-2 mb-6">`;
+    urgent.forEach(o => { html += renderOrderCard(o, 'compact'); });
+    html += '</div>';
+  }
+
+  // Monteur-Kapazität
+  html += `<h3 class="text-white font-bold mb-3">👷 Monteur-Auslastung</h3>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">`;
+  TECHS.forEach(t => {
+    const assigned = (STATE.assignments[t.id] || []).length;
+    const pct = Math.min(100, Math.round(assigned / 8 * 100));
+    const color = pct > 90 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#22c55e';
+    html += `<div class="card p-4" style="border-left:4px solid ${t.color}">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-bold text-white">${esc(t.name)}</span>
+        <span class="text-xs" style="color:${color}">${assigned}/8</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="text-xs text-slate-500 mt-1">${esc(t.city)}</div>
+    </div>`;
+  });
+  html += '</div>';
+
+  // Neueste Aufträge
+  const newest = orders.filter(o => getOrderStatus(o.id) === 'neu').sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || '')).slice(0, 5);
+  if (newest.length) {
+    html += `<h3 class="text-white font-bold mb-3">📥 Neueste offene Aufträge</h3>
+    <div class="grid gap-2 mb-6">`;
+    newest.forEach(o => { html += renderOrderCard(o, 'compact'); });
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function dashFilter(type) {
+  switchTab('orders');
+  setTimeout(() => {
+    const filterEl = document.getElementById('orderStatusFilter');
+    if (filterEl) { filterEl.value = type; filterEl.dispatchEvent(new Event('change')); }
+  }, 100);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UNIVERSAL ORDER CARD
+// ═══════════════════════════════════════════════════════════════
+function renderOrderCard(o, mode = 'full') {
+  const status = getOrderStatus(o.id);
+  const sl = STATUS_LABELS[status] || STATUS_LABELS['neu'];
+  const note = getOrderNote(o.id);
+  const ageText = o.age !== null ? (o.age === 0 ? 'heute' : o.age === 1 ? 'gestern' : `vor ${o.age} Tagen`) : '';
+  const ageColor = o.age > 14 ? 'text-amber-400' : o.age > 7 ? 'text-amber-500' : 'text-slate-500';
+  const assignedTech = getAssignedTech(o.id);
+  const nearestTech = TECHS.reduce((best, t) => {
+    const d = o.distances?.[t.id];
+    return d !== undefined && (best === null || d < best.dist) ? { tech: t, dist: d } : best;
+  }, null);
+
+  let html = `<div class="card p-3 ${o.emergency ? 'border-red-500/50 bg-red-900/10' : ''}" style="border-left:4px solid ${sl.color}">
+    <div class="flex items-start gap-3">
+      <div class="flex-shrink-0 relative">
+        <button onclick="event.stopPropagation();toggleStatusDropdown('${esc(o.id)}')" class="w-10 h-10 rounded-lg flex items-center justify-center text-lg" style="background:${sl.color}22" title="Status: ${sl.label}">${sl.icon}</button>
+        <div id="status-dd-${esc(o.id)}" class="hidden absolute left-0 top-11 z-50 bg-dark-card border border-dark-border rounded-lg shadow-xl py-1 w-36">
+          ${Object.entries(STATUS_LABELS).map(([k, v]) => `<button onclick="event.stopPropagation();setOrderStatus('${esc(o.id)}','${k}')" class="w-full px-3 py-1.5 text-left text-xs hover:bg-dark-hover flex items-center gap-2 ${k===status?'text-white font-bold':'text-slate-400'}">${v.icon} ${v.label}</button>`).join('')}
+        </div>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          ${o.emergency ? '<span class="text-xs font-bold px-1.5 py-0.5 bg-red-900/50 text-red-400 rounded">⚡ NOTFALL</span>' : ''}
+          <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
+          ${ageText ? `<span class="text-xs ${ageColor}">${ageText}</span>` : ''}
+        </div>
+        <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
+        <div class="text-xs text-slate-500 mt-0.5">
+          ${o.craft ? '🔧 ' + esc(o.craft) : ''}
+          ${o.damage ? ' — ' + esc(o.damage.substring(0, 80)) : o.disturbanceType ? ' — ' + esc(o.disturbanceType) : ''}
+        </div>
+        <div class="flex items-center gap-3 mt-1 flex-wrap">
+          ${o.telephone ? `<a href="tel:${esc(o.telephone.replace(/[^\\d+]/g,''))}" class="text-xs text-blue-400 hover:underline" onclick="event.stopPropagation()">📞 ${esc(o.telephone)}</a>` : ''}
+          ${assignedTech ? `<span class="text-xs px-1.5 py-0.5 rounded" style="background:${assignedTech.color}22;color:${assignedTech.color}">👷 ${esc(assignedTech.name)}</span>` : ''}
+          ${nearestTech ? `<span class="text-xs text-slate-500">📍 ${nearestTech.dist} km (${esc(nearestTech.tech.name)})</span>` : ''}
+        </div>`;
+
+  if (mode === 'full') {
+    html += `<div class="mt-2">
+          <button onclick="event.stopPropagation();toggleNote('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">📝 ${note ? 'Notiz bearbeiten' : 'Notiz hinzufügen'}</button>
+          <div id="note-${esc(o.id)}" class="${note ? '' : 'hidden'} mt-1">
+            <textarea id="note-input-${esc(o.id)}" onblur="setOrderNote('${esc(o.id)}',this.value)" class="w-full px-2 py-1 text-xs rounded border border-dark-border resize-none" rows="2" placeholder="Notiz...">${esc(note)}</textarea>
+          </div>
+        </div>`;
+  }
+
+  html += `</div></div></div>`;
+  return html;
+}
+
+function toggleStatusDropdown(orderId) {
+  const dd = document.getElementById('status-dd-' + orderId);
+  if (!dd) return;
+  // Close all other dropdowns first
+  document.querySelectorAll('[id^="status-dd-"]').forEach(el => { if (el !== dd) el.classList.add('hidden'); });
+  dd.classList.toggle('hidden');
+}
+
+function toggleNote(orderId) {
+  const el = document.getElementById('note-' + orderId);
+  if (el) {
+    el.classList.toggle('hidden');
+    if (!el.classList.contains('hidden')) {
+      const input = document.getElementById('note-input-' + orderId);
+      if (input) input.focus();
+    }
+  }
+}
+
+// Close dropdowns on outside click
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[id^="status-dd-"]') && !e.target.closest('button')) {
+    document.querySelectorAll('[id^="status-dd-"]').forEach(el => el.classList.add('hidden'));
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
@@ -373,84 +608,52 @@ function sortOrders(orders, field, dir) {
 // ═══════════════════════════════════════════════════════════════
 // TAB 1: ALLE AUFTRÄGE
 // ═══════════════════════════════════════════════════════════════
+let orderStatusFilter = 'alle';
+
 function renderOrders() {
   const container = document.getElementById('content-orders');
-  const allOrders = [...(DATA.orders?.needContact || []), ...(DATA.orders?.contacted || [])];
+  if (!STATE.ready) {
+    container.innerHTML = '<div class="card p-8 text-center text-slate-400">Erst "Aktualisieren" klicken</div>';
+    return;
+  }
 
-  // Search + Sort controls
-  let html = `
-    <div class="flex flex-col sm:flex-row gap-3 mb-4">
-      <input type="text" id="searchOrders" placeholder="🔍 Suche nach Name, Adresse, Vorgangsnr…"
-        class="flex-1 px-4 py-2 rounded-lg text-sm" value="${esc(searchQuery)}" oninput="searchQuery=this.value;renderOrders()">
-      <div class="flex gap-2">
-        <select onchange="sortField=this.value;renderOrders()"
-          class="px-3 py-2 rounded-lg text-sm bg-dark-card border border-dark-border text-slate-300">
-          <option value="date" ${sortField==='date'?'selected':''}>Datum</option>
-          <option value="region" ${sortField==='region'?'selected':''}>Region</option>
-          <option value="contact" ${sortField==='contact'?'selected':''}>Status</option>
-          <option value="plz" ${sortField==='plz'?'selected':''}>PLZ</option>
-        </select>
-        <button onclick="sortDir=sortDir==='asc'?'desc':'asc';renderOrders()"
-          class="px-3 py-2 rounded-lg text-sm bg-dark-card border border-dark-border text-slate-300 hover:bg-dark-hover">
-          ${sortDir === 'asc' ? '↑' : '↓'}
-        </button>
-      </div>
-    </div>`;
+  const allOrders = STATE.orders.filter(o => matchesGlobalSearch(o));
 
-  let filtered = allOrders.filter(o => matchesSearch(o, searchQuery));
-  filtered = sortOrders(filtered, sortField, sortDir);
+  // Status filter buttons
+  const counts = { alle: allOrders.length, neu: 0, kontaktiert: 0, termin: 0, erledigt: 0, notfall: 0, ueberfaellig: 0 };
+  allOrders.forEach(o => {
+    const s = getOrderStatus(o.id);
+    if (counts[s] !== undefined) counts[s]++;
+    if (o.emergency) counts.notfall++;
+    if (o.age > 7 && s !== 'erledigt' && s !== 'abgerechnet') counts.ueberfaellig++;
+  });
+
+  let html = `<div class="flex flex-wrap gap-2 mb-4">
+    ${['alle','neu','kontaktiert','termin','erledigt','notfall','ueberfaellig'].map(f => {
+      const labels = {alle:'📋 Alle',neu:'🔴 Neu',kontaktiert:'🟡 Kontaktiert',termin:'🟢 Termin',erledigt:'🔵 Erledigt',notfall:'⚡ Notfälle',ueberfaellig:'⏰ Überfällig'};
+      return `<button onclick="orderStatusFilter='${f}';renderOrders()" id="orderStatusFilter"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium ${orderStatusFilter===f ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}">${labels[f]} (${counts[f]})</button>`;
+    }).join('')}
+  </div>`;
+
+  // Filter
+  let filtered = allOrders;
+  if (orderStatusFilter === 'notfall') {
+    filtered = allOrders.filter(o => o.emergency);
+  } else if (orderStatusFilter === 'ueberfaellig') {
+    filtered = allOrders.filter(o => o.age > 7 && !['erledigt','abgerechnet'].includes(getOrderStatus(o.id)));
+  } else if (orderStatusFilter !== 'alle') {
+    filtered = allOrders.filter(o => getOrderStatus(o.id) === orderStatusFilter);
+  }
+
+  // Sort by date (newest first)
+  filtered.sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || ''));
 
   if (!filtered.length) {
-    html += '<div class="card p-8 text-center text-slate-400">Keine Aufträge gefunden</div>';
+    html += '<div class="card p-8 text-center text-slate-400">Keine Aufträge in dieser Kategorie</div>';
   } else {
-    // Desktop: Tabelle
-    html += `<div class="hidden md:block overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="text-left text-slate-400 border-b border-dark-border">
-        <th class="px-3 py-2">Vorgang</th>
-        <th class="px-3 py-2">Datum</th>
-        <th class="px-3 py-2">Mieter</th>
-        <th class="px-3 py-2">Adresse</th>
-        <th class="px-3 py-2">PLZ/Stadt</th>
-        <th class="px-3 py-2">Telefon</th>
-        <th class="px-3 py-2">Störung</th>
-        <th class="px-3 py-2">Status</th>
-        <th class="px-3 py-2">Region</th>
-      </tr></thead><tbody>`;
-
-    for (const o of filtered) {
-      const emergency = o.Emergency === 1;
-      const rowClass = emergency ? 'bg-red-900/20' : '';
-      html += `<tr class="border-b border-dark-border/50 hover:bg-dark-hover ${rowClass}">
-        <td class="px-3 py-2.5 font-mono text-xs text-slate-300">${emergency ? '⚡ ' : ''}${esc(getSourceId(o))}</td>
-        <td class="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">${formatDate(o.DateOfReceipt)}</td>
-        <td class="px-3 py-2.5 text-white">${esc(o.Renter)}</td>
-        <td class="px-3 py-2.5 text-slate-300">${esc(o.Street)}</td>
-        <td class="px-3 py-2.5 text-slate-400">${esc(o.Zipcode)} ${esc(o.City)}</td>
-        <td class="px-3 py-2.5">${allPhonesDisplay(o)}</td>
-        <td class="px-3 py-2.5 text-slate-400 text-xs">${esc(o.Craft || o.DisturbanceType)}</td>
-        <td class="px-3 py-2.5">${contactBadge(o._match?.matched)}</td>
-        <td class="px-3 py-2.5">${regionBadge(o._region)}</td>
-      </tr>`;
-    }
-    html += '</tbody></table></div>';
-
-    // Mobile: Karten
-    html += '<div class="md:hidden space-y-3">';
-    for (const o of filtered) {
-      const emergency = o.Emergency === 1;
-      html += `<div class="card p-4 ${emergency ? 'border-red-700' : ''}">
-        <div class="flex justify-between items-start mb-2">
-          <span class="font-mono text-xs text-slate-400">${emergency ? '⚡ ' : ''}${esc(getSourceId(o))}</span>
-          <div class="flex gap-1">${contactBadge(o._match?.matched)} ${regionBadge(o._region)}</div>
-        </div>
-        <div class="text-white font-medium">${esc(o.Renter)}</div>
-        <div class="text-sm text-slate-400 mt-1">${esc(o.Street)}, ${esc(o.Zipcode)} ${esc(o.City)}</div>
-        <div class="flex justify-between items-center mt-2">
-          <div class="text-sm">${phoneLink(o.Telephone)}</div>
-          <div class="text-xs text-slate-500">${formatDate(o.DateOfReceipt)} · ${esc(o.Craft)}</div>
-        </div>
-      </div>`;
-    }
+    html += `<div class="grid gap-2">`;
+    filtered.forEach(o => { html += renderOrderCard(o, 'full'); });
     html += '</div>';
   }
 
