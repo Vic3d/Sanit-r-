@@ -64,7 +64,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v5.8.0</span>
+        <span class="text-xs text-slate-600 font-mono">v5.9.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400 font-medium"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -173,9 +173,9 @@ const STATE = {
 async function buildSharedState() {
   if (!DATA?.orders) return;
   const plzCoords = await loadPLZCoords();
-  // Use ALL orders (all states) if available, otherwise fallback to needContact+contacted
+  // Use ALL orders, but filter out fertiggestellt (4,6,7) + abgerechnet (8,9)
   const allRaw = DATA.orders?.all?.length
-    ? DATA.orders.all
+    ? DATA.orders.all.filter(o => o.OrderState <= 3)
     : [...(DATA.orders?.needContact || []), ...(DATA.orders?.contacted || [])];
 
   STATE.orders = allRaw.map(o => {
@@ -1534,7 +1534,7 @@ let plannerRegionMap = null; // PLZ→region from DATA
 function renderPlanner() {
   const container = document.getElementById('content-planner');
   const allRaw = DATA.orders?.all?.length
-    ? DATA.orders.all
+    ? DATA.orders.all.filter(o => o.OrderState <= 3)
     : [...(DATA.orders?.needContact || []), ...(DATA.orders?.contacted || [])];
 
   if (!allRaw.length) {
