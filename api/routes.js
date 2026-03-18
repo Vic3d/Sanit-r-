@@ -85,6 +85,8 @@ module.exports = async (req, res) => {
             body: JSON.stringify({ coordinates: waypoints }),
           });
           const dirText = await dirRes.text();
+          global._lastOrsStatus = dirRes.status;
+          global._lastOrsBody = dirText.substring(0, 300);
           console.log('[routes] ORS response:', dirRes.status, dirText.substring(0, 200));
           if (dirRes.ok) {
             const dirData = JSON.parse(dirText);
@@ -109,7 +111,7 @@ module.exports = async (req, res) => {
         totalDistance: realDistance,
         totalDuration: realDuration,
         routeGeometry,
-        _debug: { hasKey: !!ORS_KEY, keyStart: ORS_KEY ? ORS_KEY.substring(0, 10) : 'MISSING', waypointCount: orderedOrders.length + 2 },
+        _debug: { hasKey: !!ORS_KEY, keyStart: ORS_KEY ? ORS_KEY.substring(0, 10) : 'MISSING', waypointCount: orderedOrders.length + 2, orsStatus: global._lastOrsStatus || 'unknown', orsBody: global._lastOrsBody || '' },
       });
     }
 
