@@ -51,8 +51,7 @@
     .route-loading .spinner { width: 24px; height: 24px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .planner-card { user-select: none; }
-    .planner-col-header.ring-2 { animation: pulse-ring 1s infinite; }
-    @keyframes pulse-ring { 0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0.4); } 50% { box-shadow: 0 0 0 4px rgba(96,165,250,0); } }
+    .planner-card:active { cursor: grabbing; opacity: 0.6; }
     [data-col].bg-slate-800\/50 { outline: 2px dashed #60a5fa; outline-offset: -2px; }
   </style>
 </head>
@@ -65,7 +64,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v6.1.0</span>
+        <span class="text-xs text-slate-600 font-mono">v6.1.1</span>
         <span id="lastUpdate" class="text-sm text-slate-400 font-medium"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -1673,8 +1672,8 @@ function renderPlannerColumn(colId, title, color, orders, tech) {
   const pct = tech ? Math.min(100, Math.round(count / MAX_JOBS * 100)) : 0;
   const capColor = pct > 90 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#22c55e';
 
-  let html = `<div class="card overflow-hidden planner-col" data-col="${colId}" style="border-top: 3px solid ${color}">
-    <div class="p-3 border-b border-dark-border planner-col-header rounded-t cursor-pointer hover:bg-slate-700/50 transition-colors" data-col="${colId}">
+  let html = `<div class="card overflow-hidden" style="border-top: 3px solid ${color}">
+    <div class="p-3 border-b border-dark-border planner-drop rounded-t" data-col="${colId}">
       <div class="flex items-center justify-between mb-1">
         <span class="text-sm font-bold text-white">${esc(title)}</span>
         <span class="text-xs px-2 py-0.5 rounded-full" style="background:${color}22;color:${color}">${count}</span>
@@ -1706,7 +1705,7 @@ function renderPlannerColumn(colId, title, color, orders, tech) {
       </div>`;
       })() : `<div class="text-xs text-slate-500">${count} übrig</div>`}
     </div>
-    <div class="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto planner-col" id="col-${colId}" data-col="${colId}">`;
+    <div class="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto planner-drop" id="col-${colId}" data-col="${colId}">`;
 
   let prevCoords = tech ? tech.home : null;
   for (let oi = 0; oi < orders.length; oi++) {
@@ -1732,7 +1731,7 @@ function renderPlannerColumn(colId, title, color, orders, tech) {
       html += `<div class="text-center text-xs text-slate-500 py-0.5">🏠 → ${dist} km</div>`;
     }
 
-    html += `<div class="p-2 rounded-lg bg-dark-bg border ${o.emergency ? 'border-red-500/50 bg-red-900/10' : 'border-dark-border'} cursor-pointer hover:border-blue-400 transition-colors planner-card" data-order-id="${esc(o.id)}">
+    html += `<div class="p-2 rounded-lg bg-dark-bg border ${o.emergency ? 'border-red-500/50 bg-red-900/10' : 'border-dark-border'} cursor-grab hover:border-blue-400 transition-colors planner-card" data-order-id="${esc(o.id)}">
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-1">
@@ -1757,40 +1756,35 @@ function renderPlannerColumn(colId, title, color, orders, tech) {
   return html;
 }
 
-let plannerSelectedOrder = null;
-
 function initPlannerDragDrop() {
-  // Click-to-move: click card to select, click column header to move
+  // Drag & Drop
   document.querySelectorAll('.planner-card').forEach(card => {
-    card.addEventListener('click', e => {
-      if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.tagName === 'A') return;
-      const orderId = card.dataset.orderId;
-      if (plannerSelectedOrder === orderId) {
-        plannerSelectedOrder = null;
-        card.style.outline = '';
-        document.querySelectorAll('.planner-col-header').forEach(h => h.classList.remove('ring-2', 'ring-blue-400'));
-      } else {
-        // Deselect previous
-        document.querySelectorAll('.planner-card').forEach(c => c.style.outline = '');
-        plannerSelectedOrder = orderId;
-        card.style.outline = '2px solid #60a5fa';
-        // Highlight column headers as drop targets
-        document.querySelectorAll('.planner-col-header').forEach(h => {
-          h.classList.add('ring-2', 'ring-blue-400', 'cursor-pointer');
-        });
-      }
-    });
+    card.setAttribute('draggable', 'true');
+    card.ondragstart = function(e) {
+      e.dataTransfer.setData('text/plain', this.dataset.orderId);
+      e.dataTransfer.effectAllowed = 'move';
+      this.style.opacity = '0.4';
+      setTimeout(() => {
+        document.querySelectorAll('.planner-drop').forEach(d => { d.style.outline = '2px dashed #60a5fa'; d.style.outlineOffset = '-2px'; });
+      }, 0);
+    };
+    card.ondragend = function() {
+      this.style.opacity = '1';
+      document.querySelectorAll('.planner-drop').forEach(d => { d.style.outline = ''; });
+    };
   });
 
-  document.querySelectorAll('.planner-col-header').forEach(header => {
-    header.addEventListener('click', () => {
-      if (!plannerSelectedOrder) return;
-      const targetCol = header.dataset.col;
-      if (targetCol) {
-        moveOrderToColumn(plannerSelectedOrder, targetCol);
-        plannerSelectedOrder = null;
-      }
-    });
+  document.querySelectorAll('.planner-drop').forEach(zone => {
+    zone.ondragover = function(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; this.style.background = 'rgba(96,165,250,0.15)'; };
+    zone.ondragleave = function(e) { if (!this.contains(e.relatedTarget)) this.style.background = ''; };
+    zone.ondrop = function(e) {
+      e.preventDefault();
+      this.style.background = '';
+      this.style.outline = '';
+      const orderId = e.dataTransfer.getData('text/plain');
+      const targetCol = this.dataset.col;
+      if (orderId && targetCol) moveOrderToColumn(orderId, targetCol);
+    };
   });
 }
 
