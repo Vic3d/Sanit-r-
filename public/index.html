@@ -64,7 +64,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v5.6.0</span>
+        <span class="text-xs text-slate-600 font-mono">v5.7.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400 font-medium"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -788,12 +788,18 @@ function renderOrders() {
         class="px-3 py-1.5 rounded-lg text-xs font-medium ${orderStatusFilter===f ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}">${labels[f]} (${counts[f]})</button>`;
     }).join('')}
   </div>
-  <div class="flex gap-2 mb-4 items-center">
+  <div class="flex flex-wrap gap-2 mb-3 items-center">
+    <span class="text-xs text-slate-500">Ausführung:</span>
+    ${['alle','heute','morgen','7d'].map(f => {
+      const labels = {alle:'Alle',heute:'Heute',morgen:'Morgen','7d':'7 Tage'};
+      return `<button onclick="window.execFilter='${f}';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.execFilter||'alle')===f?'bg-green-600 text-white':'bg-slate-700 text-slate-400'}">${labels[f]}</button>`;
+    }).join('')}
+  </div>
+  <div class="flex flex-wrap gap-2 mb-4 items-center">
     <span class="text-xs text-slate-500">Sortierung:</span>
-    <button onclick="orderSort='newest';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'newest')==='newest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">🕐 Neueste</button>
-    <button onclick="orderSort='oldest';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'newest')==='oldest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">📅 Älteste</button>
-    <button onclick="orderSort='execution';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'newest')==='execution'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">🔧 Ausführung</button>
-    <button onclick="orderSort='status';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'newest')==='status'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">🏷️ Status</button>
+    <button onclick="orderSort='execution';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'execution')==='execution'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">🔧 Ausführung</button>
+    <button onclick="orderSort='newest';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'execution')==='newest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">🕐 Eingang</button>
+    <button onclick="orderSort='status';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'execution')==='status'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">🏷️ Status</button>
   </div>`;
 
   // Filter
@@ -806,12 +812,29 @@ function renderOrders() {
     filtered = allOrders.filter(o => getOrderStatus(o.id) === orderStatusFilter);
   }
 
+  // ExecutionDate filter
+  const ef = window.execFilter || 'alle';
+  if (ef !== 'alle') {
+    const now2 = new Date();
+    const todayISO = now2.toISOString().split('T')[0];
+    const tomorrow = new Date(now2); tomorrow.setDate(now2.getDate() + 1);
+    const tomorrowISO = tomorrow.toISOString().split('T')[0];
+    const week = new Date(now2); week.setDate(now2.getDate() + 7);
+    const weekISO = week.toISOString().split('T')[0];
+
+    if (ef === 'heute') {
+      filtered = filtered.filter(o => o.executionDate === todayISO);
+    } else if (ef === 'morgen') {
+      filtered = filtered.filter(o => o.executionDate === tomorrowISO);
+    } else if (ef === '7d') {
+      filtered = filtered.filter(o => o.executionDate >= todayISO && o.executionDate <= weekISO);
+    }
+  }
+
   // Sort
-  const sort = window.orderSort || 'newest';
+  const sort = window.orderSort || 'execution';
   if (sort === 'newest') {
     filtered.sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || ''));
-  } else if (sort === 'oldest') {
-    filtered.sort((a, b) => (a.dateStr || '').localeCompare(b.dateStr || ''));
   } else if (sort === 'execution') {
     filtered.sort((a, b) => (b.executionDate || '').localeCompare(a.executionDate || ''));
   } else if (sort === 'status') {
