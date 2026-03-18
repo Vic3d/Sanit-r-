@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html><head>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>body{margin:0;background:#0f172a}#map{height:100vh;width:100%}</style>
+</head><body>
+<div id="map"></div>
+<script>
+const map = L.map('map').setView([51.67, 7.85], 10);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+// Ramiz home
+L.marker([51.6739, 7.8159]).addTo(map).bindPopup('🏠 Ramiz (Hamm)');
+
+// Test orders
+const orders = [
+  {name:'Kalwara', lat:51.71494, lng:7.83681, plz:'59073'},
+  {name:'ten Hoeve', lat:51.67218, lng:7.90186, plz:'59071'},
+  {name:'Gebäude GmbH', lat:51.59581, lng:7.76994, plz:'59199'},
+];
+
+orders.forEach((o,i) => {
+  const icon = L.divIcon({
+    html: '<div style="background:#ef4444;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.7);">'+(i+1)+'</div>',
+    className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+  });
+  L.marker([o.lat, o.lng], {icon}).addTo(map).bindPopup(o.name+' ('+o.plz+')');
+});
+
+// Route line
+const line = [[51.6739,7.8159],[51.71494,7.83681],[51.67218,7.90186],[51.59581,7.76994]];
+L.polyline(line, {color:'#ef4444', weight:4, opacity:0.8}).addTo(map);
+</script>
+</body></html>

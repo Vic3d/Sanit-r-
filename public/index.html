@@ -737,16 +737,16 @@ function getSortedOrders() {
   const arr = [...routeAllOrders];
 
   if (mode === 'newest') {
-    arr.sort((a, b) => (b.dateOfReceipt || '').localeCompare(a.dateOfReceipt || ''));
+    arr.sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || ''));
   } else if (mode === 'oldest') {
-    arr.sort((a, b) => (a.dateOfReceipt || '').localeCompare(b.dateOfReceipt || ''));
+    arr.sort((a, b) => (a.dateStr || '').localeCompare(b.dateStr || ''));
   } else if (mode === 'distance' && routeSelectedTech) {
-    arr.sort((a, b) => (a.distances[routeSelectedTech] || 999) - (b.distances[routeSelectedTech] || 999));
+    arr.sort((a, b) => (a.distances?.[routeSelectedTech] || 999) - (b.distances?.[routeSelectedTech] || 999));
   } else if (mode === 'emergency') {
     arr.sort((a, b) => {
       if (a.emergency && !b.emergency) return -1;
       if (!a.emergency && b.emergency) return 1;
-      return (b.dateOfReceipt || '').localeCompare(a.dateOfReceipt || '');
+      return (b.dateStr || '').localeCompare(a.dateStr || '');
     });
   }
   return arr;
@@ -801,7 +801,14 @@ function showSelectedOnMap() {
   if (!tech) return;
 
   const selected = routeAllOrders.filter(o => routeSelectedOrders.has(o.id) && o.coords);
-  if (!selected.length) return;
+  if (!selected.length) {
+    // Debug: if no coords, check why
+    const noCoords = routeAllOrders.filter(o => routeSelectedOrders.has(o.id) && !o.coords);
+    if (noCoords.length > 0) {
+      console.warn('[MAP] Selected orders ohne coords:', noCoords.map(o => ({id:o.id, zipcode:o.zipcode, city:o.city})));
+    }
+    return;
+  }
 
   const allCoords = [[tech.home[1], tech.home[0]]];
   selected.forEach((o, idx) => {
@@ -894,7 +901,7 @@ function renderOrderList() {
     return;
   }
 
-  const sorted = getSortedOrders();
+  const sorted = getSortedOrders().filter(o => o.coords);
   const allSelected = routeSelectedOrders.size === sorted.length && sorted.length > 0;
 
   let html = `<div class="card overflow-hidden">
