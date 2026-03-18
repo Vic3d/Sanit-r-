@@ -62,7 +62,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v3.8.0</span>
+        <span class="text-xs text-slate-600 font-mono">v3.9.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -791,9 +791,13 @@ function updateSelectionCounter() {
 }
 
 function showSelectedOnMap() {
+  // Lazy-init map if not yet created
+  if (!routeMap) initRouteMap();
   clearRouteMap();
   showTechHomes();
   if (!routeMap || !routeAllOrders) return;
+  // Ensure map renders correctly after tab switch
+  routeMap.invalidateSize();
   const tech = TECHS.find(t => t.id === routeSelectedTech);
   if (!tech) return;
 
@@ -805,24 +809,29 @@ function showSelectedOnMap() {
   selected.forEach((o, idx) => {
     const latLng = [o.coords[1], o.coords[0]];
     allCoords.push(latLng);
+    const dateText = o.dateStr ? new Date(o.dateStr).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
     const icon = L.divIcon({
-      html: `<div style="background:${tech.color};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);">${idx+1}</div>`,
-      className: '', iconSize: [24, 24], iconAnchor: [12, 12],
+      html: `<div style="background:${tech.color};color:#fff;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.6);">${idx+1}</div>`,
+      className: '', iconSize: [26, 26], iconAnchor: [13, 13],
     });
     const m = L.marker(latLng, { icon }).addTo(routeMap)
-      .bindPopup(`<strong>${esc(o.renter)}</strong><br>${esc(o.street)}<br>${esc(o.zipcode)} ${esc(o.city)}${o.telephone ? '<br>📞 '+esc(o.telephone) : ''}`);
+      .bindPopup(`<strong>${esc(o.renter)}</strong><br>${esc(o.street)}<br>${esc(o.zipcode)} ${esc(o.city)}${dateText ? '<br>📅 '+dateText : ''}${o.craft ? '<br>🔧 '+esc(o.craft) : ''}${o.telephone ? '<br>📞 <a href="tel:'+esc(o.telephone)+'">'+esc(o.telephone)+'</a>' : ''}`);
     routeMapLayers.push(m);
   });
 
   // Draw connecting line (dashed) from tech home through all selected
-  if (selected.length > 1) {
+  if (selected.length >= 1) {
     const lineCoords = [[tech.home[1], tech.home[0]], ...selected.map(o => [o.coords[1], o.coords[0]])];
     const polyline = L.polyline(lineCoords, { color: tech.color, weight: 2, opacity: 0.5, dashArray: '6 4' }).addTo(routeMap);
     routeMapLayers.push(polyline);
   }
 
-  // Fit map to show all points
-  if (allCoords.length > 1) routeMap.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
+  // Fit map: single point → zoom to it, multiple → fit bounds
+  if (selected.length === 1) {
+    routeMap.setView([selected[0].coords[1], selected[0].coords[0]], 13);
+  } else if (allCoords.length > 1) {
+    routeMap.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
+  }
 }
 
 // ── PLZ → Koordinaten Lookup (eingebettet, kein API Call!) ──
