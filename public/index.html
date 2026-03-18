@@ -59,7 +59,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v1.3.0</span>
+        <span class="text-xs text-slate-600 font-mono">v1.4.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -624,7 +624,11 @@ async function loadRouteOrders() {
 
   try {
     // Use already-loaded orders from DATA — no extra B&O call needed
-    const rawOrders = DATA.orders || [];
+    // DATA.orders = { needContact: [...], contacted: [...] }
+    const rawOrders = [
+      ...(DATA.orders?.needContact || []),
+      ...(DATA.orders?.contacted || []),
+    ];
     if (!rawOrders.length) {
       list.innerHTML = '<div class="card p-8 text-center text-slate-500">Keine Aufträge geladen — erst "Aktualisieren" klicken</div>';
       return;
