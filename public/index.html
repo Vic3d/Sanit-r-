@@ -59,7 +59,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v2.0.0</span>
+        <span class="text-xs text-slate-600 font-mono">v2.1.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -461,8 +461,12 @@ function renderRoutes() {
   // Default: no date filter (show all orders)
   const today = new Date().toISOString().split('T')[0];
 
+  // Preserve sort mode across renders
+  if (!window._routeSortMode) window._routeSortMode = 'newest';
+
   container.innerHTML = `
-    <div class="card p-3 mb-4 flex flex-wrap items-center gap-3">
+    <!-- Row 1: Monteur + Aktionen -->
+    <div class="card p-3 mb-3 flex flex-wrap items-center gap-3">
       <h2 class="text-base font-bold text-white">🗺️ Routenplaner</h2>
       <div class="flex items-center gap-2">
         <label class="text-sm text-slate-400">Monteur:</label>
@@ -470,13 +474,6 @@ function renderRoutes() {
           <option value="">— Wählen —</option>
           ${techOptions}
         </select>
-      </div>
-      <div class="flex items-center gap-2">
-        <label class="text-sm text-slate-400">Von:</label>
-        <input type="date" id="routeDateFrom" value="" class="bg-slate-800 border border-dark-border text-white rounded-lg px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-        <label class="text-sm text-slate-400">Bis:</label>
-        <input type="date" id="routeDateTo" value="" class="bg-slate-800 border border-dark-border text-white rounded-lg px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-        <span class="text-xs text-slate-600">(leer = alle)</span>
       </div>
       <div class="flex gap-2 ml-auto">
         <button onclick="loadRouteOrders()" id="loadOrdersBtn"
@@ -490,18 +487,56 @@ function renderRoutes() {
       </div>
     </div>
 
+    <!-- Row 2: Filter + Sortierung -->
+    <div class="card p-3 mb-3 flex flex-wrap items-center gap-3">
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-slate-400">Zeitraum:</label>
+        <select id="routeTimeFilter" onchange="loadRouteOrders()" class="bg-slate-800 border border-dark-border text-white rounded-lg px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+          <option value="all">Alle Aufträge</option>
+          <option value="7d">Letzte 7 Tage</option>
+          <option value="14d">Letzte 14 Tage</option>
+          <option value="30d">Letzte 30 Tage</option>
+          <option value="90d">Letzte 90 Tage</option>
+          <option value="custom">Eigener Zeitraum…</option>
+        </select>
+      </div>
+      <div id="customDateRange" class="flex items-center gap-2" style="display:none">
+        <label class="text-sm text-slate-400">Von:</label>
+        <input type="date" id="routeDateFrom" value="" class="bg-slate-800 border border-dark-border text-white rounded-lg px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+        <label class="text-sm text-slate-400">Bis:</label>
+        <input type="date" id="routeDateTo" value="" class="bg-slate-800 border border-dark-border text-white rounded-lg px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+      </div>
+      <div class="flex items-center gap-1 ml-auto">
+        <span class="text-xs text-slate-500 mr-1">Sortierung:</span>
+        <button onclick="setRouteSort('newest')" id="sort-newest" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='newest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">🕐 Neueste</button>
+        <button onclick="setRouteSort('oldest')" id="sort-oldest" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='oldest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">📅 Älteste</button>
+        <button onclick="setRouteSort('distance')" id="sort-distance" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='distance'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">📍 Nähe</button>
+        <button onclick="setRouteSort('emergency')" id="sort-emergency" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='emergency'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">⚡ Notfälle</button>
+      </div>
+    </div>
+
+    <!-- Row 3: Kapazitäts-Balken (nur wenn Monteur gewählt) -->
+    <div id="tech-capacity" class="mb-3"></div>
+
     <!-- Map -->
-    <div class="card mb-4 overflow-hidden" style="height:400px">
+    <div class="card mb-3 overflow-hidden" style="height:400px">
       <div id="route-map" style="height:100%;width:100%"></div>
     </div>
 
     <!-- Route result (hidden until calculated) -->
-    <div id="route-result" class="mb-4"></div>
+    <div id="route-result" class="mb-3"></div>
 
     <!-- Order list -->
     <div id="route-order-list">
-      <div class="card p-8 text-center text-slate-500">Monteur auswählen → "Aufträge laden" (instant, kein Geocoding-Delay mehr)</div>
+      <div class="card p-8 text-center text-slate-500">Monteur auswählen → "Aufträge laden" (instant)</div>
     </div>`;
+
+  // Show/hide custom date range
+  document.getElementById('routeTimeFilter').addEventListener('change', function() {
+    document.getElementById('customDateRange').style.display = this.value === 'custom' ? 'flex' : 'none';
+  });
+
+  setTimeout(() => initRouteMap(), 100);
 
   setTimeout(() => initRouteMap(), 100);
 }
@@ -579,7 +614,7 @@ function toggleOrderSelection(orderId) {
   }
   updateOptimizeBtn();
   updateSelectionCounter();
-  // Update map to show selected markers
+  renderCapacityBar();
   showSelectedOnMap();
 }
 
@@ -596,9 +631,71 @@ function selectAllOrders() {
   showSelectedOnMap();
 }
 
+function setRouteSort(mode) {
+  window._routeSortMode = mode;
+  // Update button styles
+  ['newest','oldest','distance','emergency'].forEach(m => {
+    const btn = document.getElementById('sort-' + m);
+    if (btn) {
+      if (m === mode) { btn.className = 'px-2 py-1 text-xs rounded bg-blue-600 text-white'; }
+      else { btn.className = 'px-2 py-1 text-xs rounded bg-slate-700 text-slate-400 hover:bg-slate-600'; }
+    }
+  });
+  if (routeAllOrders) renderOrderList();
+}
+
 function getSortedOrders() {
-  if (!routeAllOrders || !routeSelectedTech) return routeAllOrders || [];
-  return [...routeAllOrders].sort((a, b) => (a.distances[routeSelectedTech] || 999) - (b.distances[routeSelectedTech] || 999));
+  if (!routeAllOrders) return [];
+  const mode = window._routeSortMode || 'newest';
+  const arr = [...routeAllOrders];
+
+  if (mode === 'newest') {
+    arr.sort((a, b) => (b.dateOfReceipt || '').localeCompare(a.dateOfReceipt || ''));
+  } else if (mode === 'oldest') {
+    arr.sort((a, b) => (a.dateOfReceipt || '').localeCompare(b.dateOfReceipt || ''));
+  } else if (mode === 'distance' && routeSelectedTech) {
+    arr.sort((a, b) => (a.distances[routeSelectedTech] || 999) - (b.distances[routeSelectedTech] || 999));
+  } else if (mode === 'emergency') {
+    arr.sort((a, b) => {
+      if (a.emergency && !b.emergency) return -1;
+      if (!a.emergency && b.emergency) return 1;
+      return (b.dateOfReceipt || '').localeCompare(a.dateOfReceipt || '');
+    });
+  }
+  return arr;
+}
+
+function renderCapacityBar() {
+  const el = document.getElementById('tech-capacity');
+  if (!el) return;
+  if (!routeSelectedTech || !routeAllOrders) { el.innerHTML = ''; return; }
+
+  const tech = TECHS.find(t => t.id === routeSelectedTech);
+  if (!tech) return;
+
+  const MAX_JOBS_PER_DAY = 8; // ~8 Aufträge pro Tag realistisch
+  const selectedCount = routeSelectedOrders.size;
+  const totalForTech = routeAllOrders.filter(o => {
+    const d = o.distances?.[routeSelectedTech];
+    return d !== undefined && d < 60; // within 60km range
+  }).length;
+  const pct = Math.min(100, Math.round(selectedCount / MAX_JOBS_PER_DAY * 100));
+  const color = pct > 90 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#22c55e';
+  const label = pct > 90 ? '⚠️ Überlastet' : pct > 60 ? '🟡 Gut ausgelastet' : '🟢 Kapazität frei';
+
+  el.innerHTML = `<div class="card p-3">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm text-white font-medium" style="color:${tech.color}">${esc(tech.name)}</span>
+      <span class="text-xs text-slate-400">${selectedCount} / ${MAX_JOBS_PER_DAY} Aufträge ausgewählt ${label}</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" style="width:${pct}%;background:${color}"></div>
+    </div>
+    <div class="flex justify-between mt-1 text-xs text-slate-500">
+      <span>${totalForTech} Aufträge im Umkreis 60km</span>
+      <span>Max ~${MAX_JOBS_PER_DAY}/Tag</span>
+    </div>
+  </div>`;
 }
 
 function updateSelectionCounter() {
@@ -655,9 +752,17 @@ async function loadRouteOrders() {
       ...(DATA.orders?.contacted || []),
     ];
 
-    // Date filter
-    const fromDate = document.getElementById('routeDateFrom')?.value;
-    const toDate = document.getElementById('routeDateTo')?.value;
+    // Date filter (dropdown presets + custom)
+    const timeFilter = document.getElementById('routeTimeFilter')?.value || 'all';
+    let fromDate = '', toDate = '';
+    if (timeFilter === 'custom') {
+      fromDate = document.getElementById('routeDateFrom')?.value || '';
+      toDate = document.getElementById('routeDateTo')?.value || '';
+    } else if (timeFilter !== 'all') {
+      const days = parseInt(timeFilter);
+      const d = new Date(); d.setDate(d.getDate() - days);
+      fromDate = d.toISOString().split('T')[0];
+    }
     const rawOrders = (!fromDate && !toDate) ? allRaw : allRaw.filter(o => {
       if (!o.DateOfReceipt) return true;
       const d = o.DateOfReceipt.substring(0, 10);
@@ -731,14 +836,7 @@ function renderOrderList() {
     </div>
     <div class="divide-y divide-dark-border/30" style="max-height:500px;overflow-y:auto">`;
 
-  // Sort: emergencies first, then by distance
-  const emergencyFirst = [...sorted].sort((a, b) => {
-    if (a.emergency && !b.emergency) return -1;
-    if (!a.emergency && b.emergency) return 1;
-    return 0;
-  });
-
-  for (const o of emergencyFirst) {
+  for (const o of sorted) {
     const dist = routeSelectedTech ? o.distances?.[routeSelectedTech] : null;
     const checked = routeSelectedOrders.has(o.id);
     const bgClass = checked ? 'bg-slate-800/60' : o.emergency ? 'bg-red-900/20 hover:bg-red-900/30' : 'hover:bg-dark-hover';
@@ -770,6 +868,7 @@ function renderOrderList() {
   html += '</div></div>';
   list.innerHTML = html;
   updateSelectionCounter();
+  renderCapacityBar();
 }
 
 function formatDuration(seconds) {
