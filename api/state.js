@@ -230,6 +230,7 @@ module.exports = async (req, res) => {
         contacted,
         inProgress,
         completed,
+        all: enrichedOrders,
       },
       addressGroups,
       technicians,
