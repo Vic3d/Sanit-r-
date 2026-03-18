@@ -48,6 +48,9 @@
     .route-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 40px; }
     .route-loading .spinner { width: 24px; height: 24px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    [draggable="true"] { user-select: none; }
+    [draggable="true"]:active { cursor: grabbing; }
+    [data-col].bg-slate-800\/50 { outline: 2px dashed #60a5fa; outline-offset: -2px; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -59,7 +62,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v2.1.0</span>
+        <span class="text-xs text-slate-600 font-mono">v2.2.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -96,6 +99,8 @@
         class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📞 Anschreiben</button>
       <button onclick="switchTab('routes')" id="tab-routes"
         class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">🗺️ Routen</button>
+      <button onclick="switchTab('planner')" id="tab-planner"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📋 Tagesplan</button>
       <button onclick="switchTab('techs')" id="tab-techs"
         class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">👷 Monteure</button>
     </div>
@@ -104,6 +109,7 @@
     <div id="content-orders"></div>
     <div id="content-contact" class="hidden"></div>
     <div id="content-routes" class="hidden"></div>
+    <div id="content-planner" class="hidden"></div>
     <div id="content-techs" class="hidden"></div>
 
     <!-- Loading -->
@@ -174,7 +180,7 @@ function updateStats() {
 // ═══════════════════════════════════════════════════════════════
 function switchTab(tab) {
   currentTab = tab;
-  ['orders', 'contact', 'routes', 'techs'].forEach(t => {
+  ['orders', 'contact', 'routes', 'planner', 'techs'].forEach(t => {
     document.getElementById('content-' + t).classList.toggle('hidden', t !== tab);
     document.getElementById('tab-' + t).className =
       `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${t === tab ? 'tab-active' : 'tab-inactive'}`;
@@ -188,6 +194,7 @@ function renderCurrentTab() {
     case 'orders': renderOrders(); break;
     case 'contact': renderContact(); break;
     case 'routes': renderRoutes(); break;
+    case 'planner': renderPlanner(); break;
     case 'techs': renderTechs(); break;
   }
 }
@@ -1031,7 +1038,248 @@ function toggleExpand(i) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TAB 4: MONTEURE
+// TAB 4: TAGESPLAN (Drag & Drop Kanban)
+// ═══════════════════════════════════════════════════════════════
+let plannerAssignments = {}; // { techId: [orderId, ...] }
+let plannerOrders = []; // all orders for planner
+
+function renderPlanner() {
+  const container = document.getElementById('content-planner');
+  const allRaw = [...(DATA.orders?.needContact || []), ...(DATA.orders?.contacted || [])];
+
+  if (!allRaw.length) {
+    container.innerHTML = '<div class="card p-8 text-center text-slate-400">Keine Aufträge — erst oben "Aktualisieren"</div>';
+    return;
+  }
+
+  // Load PLZ coords for distance calc
+  loadPLZCoords().then(plzCoords => {
+    plannerOrders = allRaw.map(o => {
+      const coords = plzCoords[o.Zipcode];
+      const distances = {};
+      if (coords) {
+        TECHS.forEach(t => { distances[t.id] = haversineKm(coords[0], coords[1], t.home[0], t.home[1]); });
+      }
+      const age = o.DateOfReceipt ? Math.floor((Date.now() - new Date(o.DateOfReceipt.substring(0,10)).getTime()) / 86400000) : null;
+      return {
+        id: getSourceId(o),
+        renter: o.Renter || '',
+        street: o.Street || '',
+        zipcode: o.Zipcode || '',
+        city: o.City || '',
+        telephone: o.Telephone || '',
+        craft: o.Craft || '',
+        damage: o.Damage || '',
+        disturbanceType: o.DisturbanceType || '',
+        emergency: o.Emergency === 1,
+        age,
+        distances,
+        coords,
+      };
+    });
+
+    // Init assignments if empty
+    if (!plannerAssignments._init) {
+      plannerAssignments = { _init: true, unassigned: plannerOrders.map(o => o.id) };
+      TECHS.forEach(t => { plannerAssignments[t.id] = []; });
+    }
+
+    renderPlannerBoard();
+  });
+}
+
+function renderPlannerBoard() {
+  const container = document.getElementById('content-planner');
+  const MAX_JOBS = 8;
+
+  // Auto-assign button
+  let html = `<div class="card p-3 mb-3 flex items-center justify-between">
+    <h2 class="text-base font-bold text-white">📋 Tagesplan — Drag & Drop Zuordnung</h2>
+    <div class="flex gap-2">
+      <button onclick="autoAssignPlanner()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium">
+        🤖 Auto-Zuordnung (nach Nähe)
+      </button>
+      <button onclick="resetPlanner()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium">
+        🔄 Reset
+      </button>
+      <button onclick="exportPlannerRoutes()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium">
+        📤 Alle Routen exportieren
+      </button>
+    </div>
+  </div>`;
+
+  // Kanban board
+  html += `<div class="grid grid-cols-1 md:grid-cols-${TECHS.length + 1} gap-3" style="grid-template-columns: repeat(${TECHS.length + 1}, minmax(0, 1fr))">`;
+
+  // Unassigned column
+  const unassigned = (plannerAssignments.unassigned || []).map(id => plannerOrders.find(o => o.id === id)).filter(Boolean);
+  html += renderPlannerColumn('unassigned', '📥 Nicht zugeordnet', '#64748b', unassigned, null);
+
+  // Tech columns
+  TECHS.forEach(t => {
+    const assigned = (plannerAssignments[t.id] || []).map(id => plannerOrders.find(o => o.id === id)).filter(Boolean);
+    html += renderPlannerColumn(t.id, `${t.name}`, t.color, assigned, t);
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+
+  // Enable drag & drop
+  initPlannerDragDrop();
+}
+
+function renderPlannerColumn(colId, title, color, orders, tech) {
+  const MAX_JOBS = 8;
+  const count = orders.length;
+  const pct = tech ? Math.min(100, Math.round(count / MAX_JOBS * 100)) : 0;
+  const capColor = pct > 90 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#22c55e';
+
+  let html = `<div class="card overflow-hidden" style="border-top: 3px solid ${color}">
+    <div class="p-3 border-b border-dark-border">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-sm font-bold text-white">${esc(title)}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full" style="background:${color}22;color:${color}">${count}</span>
+      </div>
+      ${tech ? `<div class="progress-bar mt-1"><div class="progress-fill" style="width:${pct}%;background:${capColor}"></div></div>
+      <div class="text-xs text-slate-500 mt-1">${count}/${MAX_JOBS} Aufträge</div>` : `<div class="text-xs text-slate-500">${count} übrig</div>`}
+    </div>
+    <div class="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto" id="col-${colId}" data-col="${colId}">`;
+
+  for (const o of orders) {
+    const dist = tech ? o.distances?.[tech.id] : null;
+    const ageText = o.age !== null ? (o.age === 0 ? 'heute' : o.age === 1 ? 'gestern' : `${o.age}d`) : '';
+    const ageColor = o.age > 14 ? 'text-amber-400' : 'text-slate-500';
+
+    html += `<div class="p-2 rounded-lg bg-dark-bg border border-dark-border cursor-grab hover:border-slate-400 transition-colors" draggable="true" data-order-id="${esc(o.id)}">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1">
+            ${o.emergency ? '<span class="text-red-400 text-xs font-bold">⚡</span>' : ''}
+            <span class="text-xs font-medium text-white truncate">${esc(o.renter)}</span>
+          </div>
+          <div class="text-xs text-slate-400 truncate">${esc(o.zipcode)} ${esc(o.city)}</div>
+          <div class="text-xs text-slate-500 truncate">${esc(o.craft || o.disturbanceType || '')}</div>
+        </div>
+        <div class="text-right flex-shrink-0">
+          ${dist !== null ? `<div class="text-xs font-bold ${dist < 20 ? 'text-green-400' : dist < 40 ? 'text-amber-400' : 'text-red-400'}">${dist}km</div>` : ''}
+          ${ageText ? `<div class="text-xs ${ageColor}">${ageText}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function initPlannerDragDrop() {
+  const columns = document.querySelectorAll('[data-col]');
+  columns.forEach(col => {
+    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('bg-slate-800/50'); });
+    col.addEventListener('dragleave', () => { col.classList.remove('bg-slate-800/50'); });
+    col.addEventListener('drop', e => {
+      e.preventDefault();
+      col.classList.remove('bg-slate-800/50');
+      const orderId = e.dataTransfer.getData('text/plain');
+      const targetCol = col.dataset.col;
+      if (!orderId || !targetCol) return;
+      moveOrderToColumn(orderId, targetCol);
+    });
+  });
+
+  const cards = document.querySelectorAll('[draggable="true"]');
+  cards.forEach(card => {
+    card.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', card.dataset.orderId);
+      card.style.opacity = '0.5';
+    });
+    card.addEventListener('dragend', e => { card.style.opacity = '1'; });
+  });
+}
+
+function moveOrderToColumn(orderId, targetCol) {
+  // Remove from current column
+  for (const key of Object.keys(plannerAssignments)) {
+    if (key === '_init') continue;
+    const arr = plannerAssignments[key];
+    const idx = arr.indexOf(orderId);
+    if (idx !== -1) arr.splice(idx, 1);
+  }
+  // Add to target
+  const targetKey = targetCol === 'unassigned' ? 'unassigned' : parseInt(targetCol);
+  if (!plannerAssignments[targetKey]) plannerAssignments[targetKey] = [];
+  plannerAssignments[targetKey].push(orderId);
+  renderPlannerBoard();
+}
+
+function autoAssignPlanner() {
+  // Reset all to unassigned first
+  const allIds = plannerOrders.map(o => o.id);
+  plannerAssignments = { _init: true, unassigned: [] };
+  TECHS.forEach(t => { plannerAssignments[t.id] = []; });
+
+  // Greedy: assign each order to nearest tech with capacity
+  const MAX_JOBS = 8;
+  const remaining = [...plannerOrders].sort((a, b) => (b.emergency ? 1 : 0) - (a.emergency ? 1 : 0)); // emergencies first
+
+  for (const o of remaining) {
+    let bestTech = null, bestDist = Infinity;
+    for (const t of TECHS) {
+      if (plannerAssignments[t.id].length >= MAX_JOBS) continue;
+      const d = o.distances?.[t.id] || 999;
+      if (d < bestDist) { bestDist = d; bestTech = t.id; }
+    }
+    if (bestTech !== null) {
+      plannerAssignments[bestTech].push(o.id);
+    } else {
+      plannerAssignments.unassigned.push(o.id);
+    }
+  }
+
+  renderPlannerBoard();
+}
+
+function resetPlanner() {
+  plannerAssignments = { _init: true, unassigned: plannerOrders.map(o => o.id) };
+  TECHS.forEach(t => { plannerAssignments[t.id] = []; });
+  renderPlannerBoard();
+}
+
+function exportPlannerRoutes() {
+  let text = '📋 TAGESPLAN — Gebr. Schutzeichel\n' + new Date().toLocaleDateString('de-DE', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) + '\n\n';
+
+  TECHS.forEach(t => {
+    const assigned = (plannerAssignments[t.id] || []).map(id => plannerOrders.find(o => o.id === id)).filter(Boolean);
+    if (!assigned.length) return;
+    text += `👷 *${t.name}* (${t.city}) — ${assigned.length} Aufträge\n`;
+    assigned.forEach((o, i) => {
+      text += `${i+1}. ${o.renter}\n   📍 ${o.street}, ${o.zipcode} ${o.city}${o.telephone ? '\n   📞 ' + o.telephone : ''}\n   🔧 ${o.craft || o.disturbanceType || ''}\n`;
+    });
+    // Google Maps link for this tech's route
+    if (assigned.length > 0 && assigned[0].coords) {
+      const origin = `${t.home[1]},${t.home[0]}`;
+      const waypoints = assigned.slice(0, -1).filter(o => o.coords).map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
+      const last = assigned.filter(o => o.coords).pop();
+      if (last) {
+        const dest = `${last.coords[1]},${last.coords[0]}`;
+        let gmUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`;
+        if (waypoints) gmUrl += `&waypoints=${waypoints}`;
+        text += `   📍 Maps: ${gmUrl}\n`;
+      }
+    }
+    text += '\n';
+  });
+
+  const unassigned = (plannerAssignments.unassigned || []).length;
+  if (unassigned > 0) text += `⚠️ ${unassigned} Aufträge nicht zugeordnet\n`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('✅ Tagesplan kopiert! Jetzt per WhatsApp an Monteure schicken.');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TAB 5: MONTEURE
 // ═══════════════════════════════════════════════════════════════
 function renderTechs() {
   const container = document.getElementById('content-techs');
