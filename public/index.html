@@ -59,7 +59,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v1.8.0</span>
+        <span class="text-xs text-slate-600 font-mono">v2.0.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -500,7 +500,7 @@ function renderRoutes() {
 
     <!-- Order list -->
     <div id="route-order-list">
-      <div class="card p-8 text-center text-slate-500">Monteur auswählen und Aufträge laden</div>
+      <div class="card p-8 text-center text-slate-500">Monteur auswählen → "Aufträge laden" (instant, kein Geocoding-Delay mehr)</div>
     </div>`;
 
   setTimeout(() => initRouteMap(), 100);
@@ -625,76 +625,82 @@ function showSelectedOnMap() {
   }
 }
 
+// ── PLZ → Koordinaten Lookup (eingebettet, kein API Call!) ──
+let PLZ_COORDS = null;
+async function loadPLZCoords() {
+  if (PLZ_COORDS) return PLZ_COORDS;
+  try {
+    const res = await fetch('/plz-coords.json');
+    PLZ_COORDS = await res.json();
+  } catch { PLZ_COORDS = {}; }
+  return PLZ_COORDS;
+}
+
+function haversineKm(lon1, lat1, lon2, lat2) {
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return Math.round(6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 10) / 10;
+}
+
 async function loadRouteOrders() {
   const btn = document.getElementById('loadOrdersBtn');
   const list = document.getElementById('route-order-list');
   btn.disabled = true;
-  btn.textContent = '⏳ Geocoding…';
-  list.innerHTML = '<div class="card p-8 text-center text-slate-400">Adressen werden geocoded… (nur PLZs, dauert ~5-10s)</div>';
+  btn.textContent = '⏳ Lade…';
 
   try {
-    // Use already-loaded orders from DATA — no extra B&O call needed
-    // DATA.orders = { needContact: [...], contacted: [...] }
     const allRaw = [
       ...(DATA.orders?.needContact || []),
       ...(DATA.orders?.contacted || []),
     ];
 
-    // Date filter (DateOfReceipt is ISO: "2025-10-06T22:00:00+00:00")
+    // Date filter
     const fromDate = document.getElementById('routeDateFrom')?.value;
     const toDate = document.getElementById('routeDateTo')?.value;
     const rawOrders = (!fromDate && !toDate) ? allRaw : allRaw.filter(o => {
       if (!o.DateOfReceipt) return true;
-      const d = o.DateOfReceipt.substring(0, 10); // "2025-10-06"
+      const d = o.DateOfReceipt.substring(0, 10);
       if (fromDate && d < fromDate) return false;
       if (toDate && d > toDate) return false;
       return true;
     });
-    console.log('[Routen] Filter:', fromDate||'*', '-', toDate||'*', '| Treffer:', rawOrders.length, '/', allRaw.length);
+
     if (!rawOrders.length) {
-      list.innerHTML = '<div class="card p-8 text-center text-slate-500">Keine Aufträge geladen — erst "Aktualisieren" klicken</div>';
+      list.innerHTML = '<div class="card p-8 text-center text-slate-500">Keine Aufträge — erst oben "Aktualisieren" klicken</div>';
       return;
     }
 
-    // Extract unique PLZs
-    const uniquePLZs = [...new Set(rawOrders.map(o => o.Zipcode).filter(Boolean))];
+    // Load PLZ coords from static JSON (instant, no API)
+    const plzCoords = await loadPLZCoords();
+    let missingPLZ = 0;
 
-    // Geocode PLZs via API
-    const res = await fetch('/api/routes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'geocode', plzList: uniquePLZs }),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
-    const { plzCoords } = await res.json();
-
-    // Build routeAllOrders from DATA + PLZ coords
-    routeAllOrders = rawOrders
-      .filter(o => o.Zipcode && plzCoords[o.Zipcode])
-      .map((o, i) => {
-        const coords = plzCoords[o.Zipcode];
-        const distances = {};
-        TECHS.forEach(t => {
-          const dLat = (coords[1] - t.home[1]) * Math.PI / 180;
-          const dLon = (coords[0] - t.home[0]) * Math.PI / 180;
-          const a = Math.sin(dLat/2)**2 + Math.cos(t.home[1]*Math.PI/180) * Math.cos(coords[1]*Math.PI/180) * Math.sin(dLon/2)**2;
-          distances[t.id] = Math.round(6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 10) / 10;
-        });
-        return {
-          id: getSourceId(o),
-          renter: o.Renter || '',
-          street: o.Street || '',
-          zipcode: o.Zipcode || '',
-          city: o.City || '',
-          telephone: o.Telephone || '',
-          craft: o.Craft || '',
-          disturbanceType: o.DisturbanceType || '',
-          emergency: o.Emergency === 1,
-          coords,
-          distances,
-        };
+    routeAllOrders = rawOrders.map((o, i) => {
+      const coords = plzCoords[o.Zipcode];
+      if (!coords) { missingPLZ++; return null; }
+      const distances = {};
+      TECHS.forEach(t => {
+        distances[t.id] = haversineKm(coords[0], coords[1], t.home[0], t.home[1]);
       });
+      return {
+        id: getSourceId(o),
+        renter: o.Renter || '',
+        street: o.Street || '',
+        zipcode: o.Zipcode || '',
+        city: o.City || '',
+        telephone: o.Telephone || '',
+        craft: o.Craft || '',
+        disturbanceType: o.DisturbanceType || '',
+        damage: o.Damage || '',
+        emergency: o.Emergency === 1,
+        dateOfReceipt: o.DateOfReceipt || '',
+        executionDate: o.ExecutionDate || '',
+        coords,
+        distances,
+      };
+    }).filter(Boolean);
 
+    if (missingPLZ > 0) console.warn(`[Routen] ${missingPLZ} Aufträge ohne PLZ-Koordinate übersprungen`);
     renderOrderList();
   } catch (err) {
     list.innerHTML = `<div class="card p-6 text-center"><div class="text-red-400 mb-2">❌ ${esc(err.message)}</div>
@@ -725,21 +731,33 @@ function renderOrderList() {
     </div>
     <div class="divide-y divide-dark-border/30" style="max-height:500px;overflow-y:auto">`;
 
-  for (const o of sorted) {
+  // Sort: emergencies first, then by distance
+  const emergencyFirst = [...sorted].sort((a, b) => {
+    if (a.emergency && !b.emergency) return -1;
+    if (!a.emergency && b.emergency) return 1;
+    return 0;
+  });
+
+  for (const o of emergencyFirst) {
     const dist = routeSelectedTech ? o.distances?.[routeSelectedTech] : null;
     const checked = routeSelectedOrders.has(o.id);
-    const bgClass = checked ? 'bg-slate-800/60' : 'hover:bg-dark-hover';
+    const bgClass = checked ? 'bg-slate-800/60' : o.emergency ? 'bg-red-900/20 hover:bg-red-900/30' : 'hover:bg-dark-hover';
+    const borderClass = o.emergency ? 'border-l-4 border-red-500' : '';
+    const recDate = o.dateOfReceipt ? o.dateOfReceipt.substring(0, 10) : '';
+    const age = recDate ? Math.floor((Date.now() - new Date(recDate).getTime()) / 86400000) : null;
+    const ageText = age !== null ? (age === 0 ? 'heute' : age === 1 ? 'gestern' : `${age} Tage`) : '';
 
-    html += `<div id="row-${esc(o.id)}" class="p-3 cursor-pointer transition-colors ${bgClass}" onclick="toggleOrderSelection('${esc(o.id)}')">
+    html += `<div id="row-${esc(o.id)}" class="p-3 cursor-pointer transition-colors ${bgClass} ${borderClass}" onclick="toggleOrderSelection('${esc(o.id)}')">
       <div class="flex items-center gap-3">
         <input type="checkbox" id="cb-${esc(o.id)}" ${checked ? 'checked' : ''} class="w-4 h-4 accent-blue-500 pointer-events-none" tabindex="-1">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
+            ${o.emergency ? '<span class="text-red-400 font-bold text-xs px-1.5 py-0.5 bg-red-900/50 rounded">⚡ NOTFALL</span>' : ''}
             <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
-            ${o.emergency ? '<span class="text-red-400 text-xs">⚡ Notfall</span>' : ''}
+            ${ageText ? `<span class="text-xs ${age > 14 ? 'text-amber-400' : 'text-slate-500'}">${ageText}</span>` : ''}
           </div>
           <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
-          <div class="text-xs text-slate-500">${esc(o.craft || o.disturbanceType)}${o.telephone ? ' · ' + esc(o.telephone) : ''}</div>
+          <div class="text-xs text-slate-500">${esc(o.craft || '')}${o.damage ? ' — ' + esc(o.damage.substring(0, 60)) : o.disturbanceType ? ' — ' + esc(o.disturbanceType) : ''}${o.telephone ? ' · <a href="tel:'+esc(o.telephone.replace(/[^\\d+]/g,''))+'" class="text-blue-400" onclick="event.stopPropagation()">'+esc(o.telephone)+'</a>' : ''}</div>
         </div>
         ${dist !== null ? `<div class="text-right flex-shrink-0">
           <div class="text-sm font-bold ${dist < 20 ? 'text-green-400' : dist < 40 ? 'text-amber-400' : 'text-red-400'}">${dist} km</div>
@@ -821,7 +839,10 @@ function renderRouteResult(data) {
           📍 In Google Maps öffnen
         </a>
         <button onclick="copyRouteText()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
-          📋 Liste kopieren
+          📋 Kopieren
+        </button>
+        <button onclick="shareWhatsApp()" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+          💬 WhatsApp
         </button>
       </div>
     </div>
@@ -842,10 +863,11 @@ function renderRouteResult(data) {
 
   html += '</div></div>';
 
-  // Store for copy
-  window._lastRouteText = `Route ${tech.name} (${orders.length} Aufträge, ${data.totalDistance} km):\n` +
-    orders.map((o, i) => `${i+1}. ${o.renter} — ${o.street}, ${o.zipcode} ${o.city}${o.telephone ? ' (Tel: '+o.telephone+')' : ''}`).join('\n') +
-    `\n\nGoogle Maps: ${gmapsUrl}`;
+  // Store for copy (WhatsApp-friendly format)
+  window._lastRouteText = `🗺️ Route ${tech.name} — ${orders.length} Aufträge, ${data.totalDistance} km, ca. ${formatDuration(data.totalDuration)}\n\n` +
+    orders.map((o, i) => `${i+1}. *${o.renter}*\n   📍 ${o.street}, ${o.zipcode} ${o.city}${o.telephone ? '\n   📞 ' + o.telephone : ''}${o.craft ? '\n   🔧 ' + o.craft : ''}`).join('\n\n') +
+    `\n\n📍 Google Maps:\n${gmapsUrl}`;
+  window._lastRouteGmaps = gmapsUrl;
 
   result.innerHTML = html;
 
@@ -890,8 +912,15 @@ function copyRouteText() {
     navigator.clipboard.writeText(window._lastRouteText).then(() => {
       const btn = event.target;
       btn.textContent = '✅ Kopiert!';
-      setTimeout(() => btn.textContent = '📋 Liste kopieren', 2000);
+      setTimeout(() => btn.textContent = '📋 Kopieren', 2000);
     });
+  }
+}
+
+function shareWhatsApp() {
+  if (window._lastRouteText) {
+    const url = `https://wa.me/?text=${encodeURIComponent(window._lastRouteText)}`;
+    window.open(url, '_blank');
   }
 }
 
