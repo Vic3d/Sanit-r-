@@ -56,53 +56,57 @@ module.exports = async (req, res) => {
       ? (typeof req.body === 'string' ? JSON.parse(req.body) : req.body) || {}
       : req.query;
 
-    // MODE 1: GET /api/routes — list all orders with distances to all techs
+    // MODE 1: GET /api/routes — list all orders, geocode by PLZ only (fast!)
     if (req.method === 'GET' && !orderIds) {
       const orders = await getOrders();
       if (!orders.length) return res.json({ technicians: TECHNICIANS, orders: [] });
 
-      // Geocode all orders
+      // Collect unique PLZs
+      const uniquePLZs = [...new Set(orders.map(o => o.Zipcode).filter(Boolean))];
+
+      // Geocode unique PLZs only (much fewer calls than full addresses)
+      const plzCoords = {};
+      for (let i = 0; i < uniquePLZs.length; i++) {
+        const plz = uniquePLZs[i];
+        try {
+          const coords = await geocodeAddress(`${plz}, Deutschland`);
+          if (coords) plzCoords[plz] = coords;
+        } catch (e) { /* skip */ }
+        if (i < uniquePLZs.length - 1) await new Promise(r => setTimeout(r, 80));
+      }
+
+      // Build order list using PLZ coordinates
       const geocoded = [];
       const failed = [];
       for (let i = 0; i < orders.length; i++) {
         const o = orders[i];
-        const address = `${o.Street}, ${o.Zipcode} ${o.City}`;
-        try {
-          const coords = await geocodeAddress(address);
-          if (coords) {
-            // Calculate distance to each technician
-            const distances = {};
-            for (const t of TECHNICIANS) {
-              distances[t.id] = Math.round(haversine(t.home[0], t.home[1], coords[0], coords[1]) * 10) / 10;
-            }
-            geocoded.push({
-              id: o.ID?.SourceId || o.SourceId || `o${i}`,
-              renter: o.Renter || '',
-              street: o.Street || '',
-              zipcode: o.Zipcode || '',
-              city: o.City || '',
-              telephone: o.Telephone || '',
-              craft: o.Craft || '',
-              disturbanceType: o.DisturbanceType || '',
-              damage: o.Damage || '',
-              remarks: o.Remarks || '',
-              emergency: o.Emergency === 1,
-              coords,
-              distances,
-            });
-          } else {
-            failed.push({ id: o.ID?.SourceId || '', renter: o.Renter || '', address, reason: 'Geocoding fehlgeschlagen' });
+        const coords = plzCoords[o.Zipcode];
+        if (coords) {
+          const distances = {};
+          for (const t of TECHNICIANS) {
+            distances[t.id] = Math.round(haversine(t.home[0], t.home[1], coords[0], coords[1]) * 10) / 10;
           }
-        } catch (err) {
-          failed.push({ id: o.ID?.SourceId || '', renter: o.Renter || '', address, reason: err.message });
-        }
-        // Rate limit (skip cached)
-        if (!geocodeCache[address] && i < orders.length - 1) {
-          await new Promise(r => setTimeout(r, 80));
+          geocoded.push({
+            id: o.ID?.SourceId || o.SourceId || `o${i}`,
+            renter: o.Renter || '',
+            street: o.Street || '',
+            zipcode: o.Zipcode || '',
+            city: o.City || '',
+            telephone: o.Telephone || '',
+            craft: o.Craft || '',
+            disturbanceType: o.DisturbanceType || '',
+            damage: o.Damage || '',
+            remarks: o.Remarks || '',
+            emergency: o.Emergency === 1,
+            coords,
+            distances,
+          });
+        } else {
+          failed.push({ id: o.ID?.SourceId || '', renter: o.Renter || '', address: `${o.Street}, ${o.Zipcode} ${o.City}`, reason: 'PLZ nicht gefunden' });
         }
       }
 
-      return res.json({ technicians: TECHNICIANS, orders: geocoded, failed, computedAt: new Date().toISOString() });
+      return res.json({ technicians: TECHNICIANS, orders: geocoded, failed, uniquePLZsGeocoded: Object.keys(plzCoords).length, computedAt: new Date().toISOString() });
     }
 
     // MODE 2: POST /api/routes — optimize route for selected tech + orders
