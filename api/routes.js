@@ -109,6 +109,7 @@ module.exports = async (req, res) => {
         totalDistance: realDistance,
         totalDuration: realDuration,
         routeGeometry,
+        _debug: { hasKey: !!ORS_KEY, keyStart: ORS_KEY ? ORS_KEY.substring(0, 10) : 'MISSING', waypointCount: orderedOrders.length + 2 },
       });
     }
 
