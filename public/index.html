@@ -36,6 +36,8 @@
     .progress-fill { border-radius: 9999px; height: 8px; transition: width 0.5s ease; }
     @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     .loading-dot { animation: pulse-dot 1.5s infinite; }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+    @media (max-width: 768px) { #app { padding-bottom: 80px; } }
     input[type="text"] { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; }
     input[type="text"]::placeholder { color: #64748b; }
     input[type="text"]:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.2); }
@@ -62,7 +64,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v4.3.0</span>
+        <span class="text-xs text-slate-600 font-mono">v5.1.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -103,6 +105,8 @@
         class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📅 Planung</button>
       <button onclick="switchTab('routes')" id="tab-routes"
         class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">🗺️ Routen</button>
+      <button onclick="switchTab('calendar')" id="tab-calendar"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📅 Kalender</button>
     </div>
 
     <!-- Tab Content -->
@@ -112,9 +116,31 @@
     <div id="content-planner" class="hidden"></div>
     <div id="content-routes" class="hidden"></div>
     <div id="content-techs" class="hidden"></div>
+    <div id="content-calendar" class="hidden"></div>
+
+    <!-- Mobile Bottom Nav -->
+    <div class="fixed bottom-0 left-0 right-0 bg-dark-card border-t border-dark-border md:hidden z-50 safe-bottom">
+      <div class="flex justify-around py-2">
+        <button onclick="switchTab('dashboard')" id="mob-dashboard" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
+          <span class="text-lg">🏠</span><span class="text-xs">Start</span>
+        </button>
+        <button onclick="switchTab('orders')" id="mob-orders" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
+          <span class="text-lg">📋</span><span class="text-xs">Aufträge</span>
+        </button>
+        <button onclick="switchTab('planner')" id="mob-planner" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
+          <span class="text-lg">📅</span><span class="text-xs">Planung</span>
+        </button>
+        <button onclick="switchTab('routes')" id="mob-routes" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
+          <span class="text-lg">🗺️</span><span class="text-xs">Routen</span>
+        </button>
+        <button onclick="switchTab('calendar')" id="mob-calendar" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
+          <span class="text-lg">📆</span><span class="text-xs">Kalender</span>
+        </button>
+      </div>
+    </div>
 
     <!-- Loading -->
-    <div id="loading" class="text-center py-16">
+    <div id="loading" class="text-center py-16 mb-16 md:mb-0">
       <div class="flex justify-center gap-2 mb-4">
         <div class="w-3 h-3 bg-blue-500 rounded-full loading-dot"></div>
         <div class="w-3 h-3 bg-blue-500 rounded-full loading-dot" style="animation-delay:0.3s"></div>
@@ -262,11 +288,14 @@ function updateStats() {
 // ═══════════════════════════════════════════════════════════════
 function switchTab(tab) {
   currentTab = tab;
-  ['dashboard', 'orders', 'contact', 'routes', 'planner', 'techs'].forEach(t => {
+  ['dashboard', 'orders', 'contact', 'routes', 'planner', 'techs', 'calendar'].forEach(t => {
     const el = document.getElementById('content-' + t);
     if (el) el.classList.toggle('hidden', t !== tab);
     const tabBtn = document.getElementById('tab-' + t);
     if (tabBtn) tabBtn.className = `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${t === tab ? 'tab-active' : 'tab-inactive'}`;
+    // Mobile bottom nav
+    const mobBtn = document.getElementById('mob-' + t);
+    if (mobBtn) mobBtn.className = `flex flex-col items-center gap-0.5 px-3 py-1 ${t === tab ? 'text-blue-400' : 'text-slate-400'}`;
   });
   renderCurrentTab();
 }
@@ -280,6 +309,7 @@ function renderCurrentTab() {
     case 'routes': renderRoutes(); break;
     case 'planner': renderPlanner(); break;
     case 'techs': renderTechs(); break;
+    case 'calendar': renderCalendar(); break;
   }
 }
 
@@ -325,6 +355,59 @@ function getOrderNote(orderId) {
 
 function setOrderNote(orderId, note) {
   localStorage.setItem('josh-note-' + orderId, note);
+}
+
+// Wiedervorlage (Follow-up date)
+function getOrderFollowUp(orderId) {
+  return localStorage.getItem('josh-followup-' + orderId) || '';
+}
+
+function setOrderFollowUp(orderId, date) {
+  if (date) localStorage.setItem('josh-followup-' + orderId, date);
+  else localStorage.removeItem('josh-followup-' + orderId);
+  renderCurrentTab();
+}
+
+// Termin (Appointment date + time)
+function getOrderAppointment(orderId) {
+  return localStorage.getItem('josh-appointment-' + orderId) || '';
+}
+
+function setOrderAppointment(orderId, datetime) {
+  if (datetime) {
+    localStorage.setItem('josh-appointment-' + datetime.split('T')[0] + '-' + orderId, orderId);
+    localStorage.setItem('josh-appointment-' + orderId, datetime);
+  } else {
+    const old = localStorage.getItem('josh-appointment-' + orderId);
+    if (old) localStorage.removeItem('josh-appointment-' + old.split('T')[0] + '-' + orderId);
+    localStorage.removeItem('josh-appointment-' + orderId);
+  }
+  renderCurrentTab();
+}
+
+// Get all appointments for a date (YYYY-MM-DD)
+function getAppointmentsForDate(dateStr) {
+  const results = [];
+  if (!STATE.ready) return results;
+  STATE.orders.forEach(o => {
+    const apt = getOrderAppointment(o.id);
+    if (apt && apt.startsWith(dateStr)) {
+      results.push({ order: o, datetime: apt, time: apt.includes('T') ? apt.split('T')[1].substring(0,5) : '' });
+    }
+  });
+  results.sort((a, b) => a.datetime.localeCompare(b.datetime));
+  return results;
+}
+
+// Get all follow-ups for a date
+function getFollowUpsForDate(dateStr) {
+  const results = [];
+  if (!STATE.ready) return results;
+  STATE.orders.forEach(o => {
+    const fu = getOrderFollowUp(o.id);
+    if (fu === dateStr) results.push(o);
+  });
+  return results;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -380,6 +463,27 @@ function renderDashboard() {
       <div class="text-xs text-slate-400">⏰ Überfällig</div>
     </div>
   </div>`;
+
+  // Wiedervorlagen heute
+  const todayStr = now.toISOString().split('T')[0];
+  const todayFollowUps = orders.filter(o => getOrderFollowUp(o.id) === todayStr);
+  if (todayFollowUps.length) {
+    html += `<div class="card p-4 mb-6 border-amber-500/50 bg-amber-900/10">
+      <h3 class="text-amber-400 font-bold mb-2">🔔 Wiedervorlagen heute (${todayFollowUps.length})</h3>
+      <div class="grid gap-2">`;
+    todayFollowUps.forEach(o => { html += renderOrderCard(o, 'compact'); });
+    html += '</div></div>';
+  }
+
+  // Termine heute
+  const todayApts = getAppointmentsForDate(todayStr);
+  if (todayApts.length) {
+    html += `<div class="card p-4 mb-6 border-green-500/50 bg-green-900/10">
+      <h3 class="text-green-400 font-bold mb-2">📅 Termine heute (${todayApts.length})</h3>
+      <div class="grid gap-2">`;
+    todayApts.forEach(a => { html += renderOrderCard(a.order, 'compact'); });
+    html += '</div></div>';
+  }
 
   // Dringend: Notfälle + Überfällige
   const urgent = orders.filter(o => {
@@ -476,12 +580,45 @@ function renderOrderCard(o, mode = 'full') {
           ${nearestTech ? `<span class="text-xs text-slate-500">📍 ${nearestTech.dist} km (${esc(nearestTech.tech.name)})</span>` : ''}
         </div>`;
 
+  const followUp = getOrderFollowUp(o.id);
+  const appointment = getOrderAppointment(o.id);
+  const today = new Date().toISOString().split('T')[0];
+  const followUpDue = followUp && followUp <= today;
+
+  // Show follow-up / appointment badges
+  if (followUp || appointment) {
+    html += `<div class="flex gap-2 mt-1.5 flex-wrap">`;
+    if (appointment) {
+      const aptDate = new Date(appointment);
+      const aptText = aptDate.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) + (appointment.includes('T') ? ' ' + appointment.split('T')[1].substring(0,5) : '');
+      html += `<span class="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400">📅 Termin: ${aptText}</span>`;
+    }
+    if (followUp) {
+      const fuDate = new Date(followUp);
+      const fuText = fuDate.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+      html += `<span class="text-xs px-2 py-0.5 rounded ${followUpDue ? 'bg-red-900/50 text-red-400 font-bold' : 'bg-amber-900/30 text-amber-400'}">🔔 ${followUpDue ? 'HEUTE: ' : ''}Wiedervorlage ${fuText}</span>`;
+    }
+    html += `</div>`;
+  }
+
   if (mode === 'full') {
-    html += `<div class="mt-2">
-          <button onclick="event.stopPropagation();toggleNote('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">📝 ${note ? 'Notiz bearbeiten' : 'Notiz hinzufügen'}</button>
-          <div id="note-${esc(o.id)}" class="${note ? '' : 'hidden'} mt-1">
-            <textarea id="note-input-${esc(o.id)}" onblur="setOrderNote('${esc(o.id)}',this.value)" class="w-full px-2 py-1 text-xs rounded border border-dark-border resize-none" rows="2" placeholder="Notiz...">${esc(note)}</textarea>
-          </div>
+    html += `<div class="mt-2 flex flex-wrap gap-2 items-center">
+          <button onclick="event.stopPropagation();toggleNote('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">📝 ${note ? 'Notiz' : '+ Notiz'}</button>
+          <button onclick="event.stopPropagation();toggleFollowUp('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">🔔 ${followUp ? 'Wiedervorlage' : '+ Wiedervorlage'}</button>
+          <button onclick="event.stopPropagation();toggleAppointment('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">📅 ${appointment ? 'Termin' : '+ Termin'}</button>
+        </div>
+        <div id="note-${esc(o.id)}" class="${note ? '' : 'hidden'} mt-1">
+          <textarea id="note-input-${esc(o.id)}" onblur="setOrderNote('${esc(o.id)}',this.value)" class="w-full px-2 py-1 text-xs rounded border border-dark-border resize-none" rows="2" placeholder="Notiz...">${esc(note)}</textarea>
+        </div>
+        <div id="followup-${esc(o.id)}" class="hidden mt-1 flex gap-2 items-center">
+          <input type="date" id="followup-input-${esc(o.id)}" value="${esc(followUp)}" class="px-2 py-1 text-xs rounded border border-dark-border" min="${today}">
+          <button onclick="setOrderFollowUp('${esc(o.id)}',document.getElementById('followup-input-${esc(o.id)}').value)" class="text-xs px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded">Setzen</button>
+          ${followUp ? `<button onclick="setOrderFollowUp('${esc(o.id)}','')" class="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded">Löschen</button>` : ''}
+        </div>
+        <div id="appointment-${esc(o.id)}" class="hidden mt-1 flex gap-2 items-center">
+          <input type="datetime-local" id="apt-input-${esc(o.id)}" value="${esc(appointment)}" class="px-2 py-1 text-xs rounded border border-dark-border">
+          <button onclick="setOrderAppointment('${esc(o.id)}',document.getElementById('apt-input-${esc(o.id)}').value)" class="text-xs px-2 py-1 bg-green-600 hover:bg-green-500 text-white rounded">Setzen</button>
+          ${appointment ? `<button onclick="setOrderAppointment('${esc(o.id)}','')" class="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded">Löschen</button>` : ''}
         </div>`;
   }
 
@@ -506,6 +643,16 @@ function toggleNote(orderId) {
       if (input) input.focus();
     }
   }
+}
+
+function toggleFollowUp(orderId) {
+  const el = document.getElementById('followup-' + orderId);
+  if (el) el.classList.toggle('hidden');
+}
+
+function toggleAppointment(orderId) {
+  const el = document.getElementById('appointment-' + orderId);
+  if (el) el.classList.toggle('hidden');
 }
 
 // Close dropdowns on outside click
@@ -1806,6 +1953,153 @@ function exportPlannerRoutes() {
 // ═══════════════════════════════════════════════════════════════
 // TAB 5: MONTEURE
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// TAB: KALENDER (Wochenansicht)
+// ═══════════════════════════════════════════════════════════════
+let calendarWeekOffset = 0;
+
+function renderCalendar() {
+  const container = document.getElementById('content-calendar');
+  if (!STATE.ready) {
+    container.innerHTML = '<div class="card p-8 text-center text-slate-400">Erst "Aktualisieren" klicken</div>';
+    return;
+  }
+
+  // Calculate week dates
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - now.getDay() + 1 + calendarWeekOffset * 7);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    days.push(d);
+  }
+
+  const today = now.toISOString().split('T')[0];
+  const weekLabel = `KW ${getWeekNumber(monday)} — ${monday.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})} bis ${days[6].toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}`;
+
+  let html = `
+  <div class="flex items-center justify-between mb-4">
+    <button onclick="calendarWeekOffset--;renderCalendar()" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm">← Vorher</button>
+    <div class="text-center">
+      <div class="text-white font-bold">${weekLabel}</div>
+      ${calendarWeekOffset !== 0 ? `<button onclick="calendarWeekOffset=0;renderCalendar()" class="text-xs text-blue-400 hover:underline">Heute</button>` : ''}
+    </div>
+    <button onclick="calendarWeekOffset++;renderCalendar()" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm">Weiter →</button>
+  </div>`;
+
+  // Grid: Rows = Techs, Columns = Days
+  html += `<div class="overflow-x-auto"><table class="w-full text-sm border-collapse">
+    <thead><tr>
+      <th class="p-2 text-left text-slate-400 w-32 border-b border-dark-border">Monteur</th>`;
+  
+  const dayNames = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+  days.forEach((d, i) => {
+    const ds = d.toISOString().split('T')[0];
+    const isToday = ds === today;
+    const isWeekend = i >= 5;
+    html += `<th class="p-2 text-center text-xs border-b border-dark-border ${isToday ? 'bg-blue-900/30 text-blue-400 font-bold' : isWeekend ? 'text-slate-600' : 'text-slate-400'}">
+      ${dayNames[i]}<br>${d.getDate()}.${d.getMonth()+1}.</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  // Row per tech
+  TECHS.forEach(t => {
+    html += `<tr class="border-b border-dark-border/30"><td class="p-2 font-medium text-sm" style="color:${t.color}">${esc(t.name)}<br><span class="text-xs text-slate-500">${esc(t.city)}</span></td>`;
+    
+    days.forEach((d, i) => {
+      const ds = d.toISOString().split('T')[0];
+      const isToday = ds === today;
+      const isWeekend = i >= 5;
+      
+      // Get appointments for this tech + day
+      const apts = getAppointmentsForDate(ds).filter(a => {
+        const tech = getAssignedTech(a.order.id);
+        return tech && tech.id === t.id;
+      });
+      
+      // Get follow-ups for this day (regardless of tech)
+      const followUps = getFollowUpsForDate(ds).filter(o => {
+        const tech = getAssignedTech(o.id);
+        return tech && tech.id === t.id;
+      });
+
+      const cellBg = isToday ? 'bg-blue-900/20' : isWeekend ? 'bg-slate-900/30' : '';
+      
+      html += `<td class="p-1 align-top ${cellBg} min-w-[120px]">`;
+      
+      if (apts.length) {
+        apts.forEach(a => {
+          html += `<div class="text-xs p-1 mb-1 rounded bg-green-900/40 border border-green-800/50 cursor-pointer" onclick="switchTab('orders');setTimeout(()=>document.getElementById('row-${esc(a.order.id)}')?.scrollIntoView(),200)" title="${esc(a.order.street)}, ${esc(a.order.city)}">
+            <span class="text-green-400 font-bold">${a.time || '–'}</span> ${esc(a.order.renter.substring(0,15))}
+          </div>`;
+        });
+      }
+      
+      if (followUps.length) {
+        followUps.forEach(o => {
+          html += `<div class="text-xs p-1 mb-1 rounded bg-amber-900/40 border border-amber-800/50">
+            🔔 ${esc(o.renter.substring(0,15))}
+          </div>`;
+        });
+      }
+      
+      if (!apts.length && !followUps.length) {
+        html += '<div class="text-xs text-slate-700 text-center py-2">—</div>';
+      }
+      
+      html += '</td>';
+    });
+    
+    html += '</tr>';
+  });
+
+  // Row for unassigned appointments
+  html += `<tr class="border-b border-dark-border/30"><td class="p-2 text-sm text-slate-500">📥 Ohne Monteur</td>`;
+  days.forEach((d) => {
+    const ds = d.toISOString().split('T')[0];
+    const apts = getAppointmentsForDate(ds).filter(a => !getAssignedTech(a.order.id));
+    const followUps = getFollowUpsForDate(ds).filter(o => !getAssignedTech(o.id));
+    
+    html += `<td class="p-1 align-top min-w-[120px]">`;
+    apts.forEach(a => {
+      html += `<div class="text-xs p-1 mb-1 rounded bg-slate-700/50 border border-slate-600/50">
+        <span class="text-slate-400">${a.time || '–'}</span> ${esc(a.order.renter.substring(0,15))}
+      </div>`;
+    });
+    followUps.forEach(o => {
+      html += `<div class="text-xs p-1 mb-1 rounded bg-amber-900/30 border border-amber-800/30">🔔 ${esc(o.renter.substring(0,15))}</div>`;
+    });
+    if (!apts.length && !followUps.length) html += '<div class="text-xs text-slate-700 text-center py-2">—</div>';
+    html += '</td>';
+  });
+  html += '</tr>';
+
+  html += '</tbody></table></div>';
+
+  // Summary
+  const totalApts = STATE.orders.filter(o => getOrderAppointment(o.id)).length;
+  const totalFollowUps = STATE.orders.filter(o => getOrderFollowUp(o.id)).length;
+  const todayFollowUps = getFollowUpsForDate(today).length;
+  
+  html += `<div class="mt-4 flex gap-4 text-xs text-slate-500">
+    <span>📅 ${totalApts} Termine gesamt</span>
+    <span>🔔 ${totalFollowUps} Wiedervorlagen</span>
+    ${todayFollowUps > 0 ? `<span class="text-amber-400 font-bold">⚠️ ${todayFollowUps} Wiedervorlagen HEUTE</span>` : ''}
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+function getWeekNumber(d) {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  const week1 = new Date(date.getFullYear(), 0, 4);
+  return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+}
+
 function renderTechs() {
   const container = document.getElementById('content-techs');
   const techs = DATA.technicians;
