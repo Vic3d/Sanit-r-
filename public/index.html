@@ -62,7 +62,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v3.4.0</span>
+        <span class="text-xs text-slate-600 font-mono">v3.5.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -829,26 +829,33 @@ function loadRouteOrders() {
   const infoEl = document.getElementById('route-info');
 
   if (!STATE.ready) {
-    list.innerHTML = '<div class="card p-8 text-center text-slate-500">Erst oben "Aktualisieren" klicken</div>';
+    // Try to build state from existing DATA
+    if (DATA?.orders) {
+      buildSharedState().then(() => loadRouteOrders());
+      list.innerHTML = '<div class="card p-8 text-center text-slate-400">⏳ Lade Aufträge…</div>';
+    } else {
+      list.innerHTML = '<div class="card p-8 text-center text-slate-500">Erst oben "Aktualisieren" klicken</div>';
+    }
     return;
   }
 
-  const viewMode = document.getElementById('routeViewMode')?.value || 'all';
+  const viewMode = document.getElementById('routeViewMode')?.value || '3d';
   let filtered;
 
   if (viewMode === 'assigned' && routeSelectedTech) {
-    // Show orders assigned to this tech in Tagesplan
     const assignedIds = STATE.assignments[routeSelectedTech] || [];
     filtered = STATE.orders.filter(o => assignedIds.includes(o.id) && o.coords);
-    // Auto-select all assigned orders
     routeSelectedOrders = new Set(filtered.map(o => o.id));
   } else if (viewMode.endsWith('d')) {
     const days = parseInt(viewMode);
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
     const cut = cutoff.toISOString().split('T')[0];
     filtered = STATE.orders.filter(o => o.dateStr >= cut && o.coords);
+    // Auto-select all filtered orders so "Route berechnen" is immediately clickable
+    if (routeSelectedTech) routeSelectedOrders = new Set(filtered.map(o => o.id));
   } else {
     filtered = STATE.orders.filter(o => o.coords);
+    if (routeSelectedTech) routeSelectedOrders = new Set(filtered.map(o => o.id));
   }
 
   routeAllOrders = filtered;
@@ -863,6 +870,7 @@ function loadRouteOrders() {
 
   renderOrderList();
   showSelectedOnMap();
+  updateOptimizeBtn();
 }
 
 function renderOrderList() {
