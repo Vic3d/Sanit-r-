@@ -62,7 +62,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v2.2.0</span>
+        <span class="text-xs text-slate-600 font-mono">v2.3.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -1042,6 +1042,9 @@ function toggleExpand(i) {
 // ═══════════════════════════════════════════════════════════════
 let plannerAssignments = {}; // { techId: [orderId, ...] }
 let plannerOrders = []; // all orders for planner
+let plannerFiltered = []; // filtered subset
+let plannerFilter = 'newest14'; // default: last 14 days
+let plannerRegionMap = null; // PLZ→region from DATA
 
 function renderPlanner() {
   const container = document.getElementById('content-planner');
@@ -1052,7 +1055,14 @@ function renderPlanner() {
     return;
   }
 
-  // Load PLZ coords for distance calc
+  // Build region map from addressGroups if available
+  if (DATA.addressGroups) {
+    plannerRegionMap = {};
+    for (const g of DATA.addressGroups) {
+      if (g.zipcode && g.region) plannerRegionMap[g.zipcode] = g.region;
+    }
+  }
+
   loadPLZCoords().then(plzCoords => {
     plannerOrders = allRaw.map(o => {
       const coords = plzCoords[o.Zipcode];
@@ -1060,7 +1070,9 @@ function renderPlanner() {
       if (coords) {
         TECHS.forEach(t => { distances[t.id] = haversineKm(coords[0], coords[1], t.home[0], t.home[1]); });
       }
-      const age = o.DateOfReceipt ? Math.floor((Date.now() - new Date(o.DateOfReceipt.substring(0,10)).getTime()) / 86400000) : null;
+      const dateStr = o.DateOfReceipt ? o.DateOfReceipt.substring(0, 10) : '';
+      const age = dateStr ? Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000) : null;
+      const region = o._region || (plannerRegionMap && plannerRegionMap[o.Zipcode]) || null;
       return {
         id: getSourceId(o),
         renter: o.Renter || '',
@@ -1072,59 +1084,104 @@ function renderPlanner() {
         damage: o.Damage || '',
         disturbanceType: o.DisturbanceType || '',
         emergency: o.Emergency === 1,
+        dateStr,
         age,
+        region,
         distances,
         coords,
       };
-    });
+    }).sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || '')); // newest first
 
-    // Init assignments if empty
-    if (!plannerAssignments._init) {
-      plannerAssignments = { _init: true, unassigned: plannerOrders.map(o => o.id) };
-      TECHS.forEach(t => { plannerAssignments[t.id] = []; });
-    }
-
+    applyPlannerFilter();
     renderPlannerBoard();
   });
+}
+
+function applyPlannerFilter() {
+  const f = plannerFilter;
+  if (f === 'all') {
+    plannerFiltered = [...plannerOrders];
+  } else if (f === 'newest7') {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
+    const cut = cutoff.toISOString().split('T')[0];
+    plannerFiltered = plannerOrders.filter(o => o.dateStr >= cut);
+  } else if (f === 'newest14') {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
+    const cut = cutoff.toISOString().split('T')[0];
+    plannerFiltered = plannerOrders.filter(o => o.dateStr >= cut);
+  } else if (f === 'newest30') {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+    const cut = cutoff.toISOString().split('T')[0];
+    plannerFiltered = plannerOrders.filter(o => o.dateStr >= cut);
+  } else if (f === 'emergency') {
+    plannerFiltered = plannerOrders.filter(o => o.emergency);
+  } else {
+    plannerFiltered = [...plannerOrders];
+  }
+
+  // Reset assignments for filtered set
+  plannerAssignments = { _init: true, unassigned: plannerFiltered.map(o => o.id) };
+  TECHS.forEach(t => { plannerAssignments[t.id] = []; });
+}
+
+function setPlannerFilter(f) {
+  plannerFilter = f;
+  applyPlannerFilter();
+  renderPlannerBoard();
 }
 
 function renderPlannerBoard() {
   const container = document.getElementById('content-planner');
   const MAX_JOBS = 8;
 
-  // Auto-assign button
-  let html = `<div class="card p-3 mb-3 flex items-center justify-between">
-    <h2 class="text-base font-bold text-white">📋 Tagesplan — Drag & Drop Zuordnung</h2>
-    <div class="flex gap-2">
-      <button onclick="autoAssignPlanner()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium">
-        🤖 Auto-Zuordnung (nach Nähe)
-      </button>
-      <button onclick="resetPlanner()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium">
-        🔄 Reset
-      </button>
-      <button onclick="exportPlannerRoutes()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium">
-        📤 Alle Routen exportieren
-      </button>
+  // Header with filter + actions
+  const filterBtns = [
+    ['newest7', '7 Tage'],
+    ['newest14', '14 Tage'],
+    ['newest30', '30 Tage'],
+    ['all', 'Alle'],
+    ['emergency', '⚡ Notfälle'],
+  ].map(([val, label]) =>
+    `<button onclick="setPlannerFilter('${val}')" class="px-2 py-1 text-xs rounded ${plannerFilter===val?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">${label}</button>`
+  ).join('');
+
+  let html = `<div class="card p-3 mb-3">
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+      <h2 class="text-base font-bold text-white">📋 Tagesplan</h2>
+      <div class="flex gap-2">
+        <button onclick="autoAssignPlanner()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium">
+          🤖 Smart-Zuordnung
+        </button>
+        <button onclick="resetPlanner()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium">
+          🔄 Reset
+        </button>
+        <button onclick="exportPlannerRoutes()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium">
+          📤 Export
+        </button>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-slate-500">Zeitraum:</span>
+      ${filterBtns}
+      <span class="text-xs text-slate-400 ml-2">${plannerFiltered.length} Aufträge</span>
     </div>
   </div>`;
 
-  // Kanban board
-  html += `<div class="grid grid-cols-1 md:grid-cols-${TECHS.length + 1} gap-3" style="grid-template-columns: repeat(${TECHS.length + 1}, minmax(0, 1fr))">`;
+  // Kanban board — responsive: stack on mobile
+  html += `<div class="grid gap-3" style="grid-template-columns: repeat(${TECHS.length + 1}, minmax(180px, 1fr)); overflow-x: auto;">`;
 
   // Unassigned column
-  const unassigned = (plannerAssignments.unassigned || []).map(id => plannerOrders.find(o => o.id === id)).filter(Boolean);
-  html += renderPlannerColumn('unassigned', '📥 Nicht zugeordnet', '#64748b', unassigned, null);
+  const unassigned = (plannerAssignments.unassigned || []).map(id => plannerFiltered.find(o => o.id === id)).filter(Boolean);
+  html += renderPlannerColumn('unassigned', '📥 Offen', '#64748b', unassigned, null);
 
   // Tech columns
   TECHS.forEach(t => {
-    const assigned = (plannerAssignments[t.id] || []).map(id => plannerOrders.find(o => o.id === id)).filter(Boolean);
+    const assigned = (plannerAssignments[t.id] || []).map(id => plannerFiltered.find(o => o.id === id)).filter(Boolean);
     html += renderPlannerColumn(t.id, `${t.name}`, t.color, assigned, t);
   });
 
   html += '</div>';
   container.innerHTML = html;
-
-  // Enable drag & drop
   initPlannerDragDrop();
 }
 
@@ -1150,15 +1207,20 @@ function renderPlannerColumn(colId, title, color, orders, tech) {
     const ageText = o.age !== null ? (o.age === 0 ? 'heute' : o.age === 1 ? 'gestern' : `${o.age}d`) : '';
     const ageColor = o.age > 14 ? 'text-amber-400' : 'text-slate-500';
 
-    html += `<div class="p-2 rounded-lg bg-dark-bg border border-dark-border cursor-grab hover:border-slate-400 transition-colors" draggable="true" data-order-id="${esc(o.id)}">
+    const regionBadge = o.region === 'nord' ? '<span class="text-xs px-1 rounded bg-red-900/50 text-red-400">N</span>'
+      : o.region === 'ost' ? '<span class="text-xs px-1 rounded bg-blue-900/50 text-blue-400">O</span>' : '';
+
+    html += `<div class="p-2 rounded-lg bg-dark-bg border ${o.emergency ? 'border-red-500/50 bg-red-900/10' : 'border-dark-border'} cursor-grab hover:border-slate-400 transition-colors" draggable="true" data-order-id="${esc(o.id)}">
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-1">
             ${o.emergency ? '<span class="text-red-400 text-xs font-bold">⚡</span>' : ''}
             <span class="text-xs font-medium text-white truncate">${esc(o.renter)}</span>
+            ${regionBadge}
           </div>
-          <div class="text-xs text-slate-400 truncate">${esc(o.zipcode)} ${esc(o.city)}</div>
-          <div class="text-xs text-slate-500 truncate">${esc(o.craft || o.disturbanceType || '')}</div>
+          <div class="text-xs text-slate-400 truncate">${esc(o.street ? o.street + ', ' : '')}${esc(o.zipcode)} ${esc(o.city)}</div>
+          <div class="text-xs text-slate-500 truncate">${esc(o.craft || '')}${o.damage ? ' — ' + esc(o.damage.substring(0,40)) : o.disturbanceType ? ' — ' + esc(o.disturbanceType) : ''}</div>
+          ${o.telephone ? `<div class="text-xs text-blue-400 mt-0.5"><a href="tel:${esc(o.telephone.replace(/[^\\d+]/g,''))}" onclick="event.stopPropagation()">${esc(o.telephone)}</a></div>` : ''}
         </div>
         <div class="text-right flex-shrink-0">
           ${dist !== null ? `<div class="text-xs font-bold ${dist < 20 ? 'text-green-400' : dist < 40 ? 'text-amber-400' : 'text-red-400'}">${dist}km</div>` : ''}
@@ -1213,26 +1275,73 @@ function moveOrderToColumn(orderId, targetCol) {
 }
 
 function autoAssignPlanner() {
-  // Reset all to unassigned first
-  const allIds = plannerOrders.map(o => o.id);
+  // Smart assignment: Region → Cluster → Nearest → Capacity
   plannerAssignments = { _init: true, unassigned: [] };
   TECHS.forEach(t => { plannerAssignments[t.id] = []; });
 
-  // Greedy: assign each order to nearest tech with capacity
   const MAX_JOBS = 8;
-  const remaining = [...plannerOrders].sort((a, b) => (b.emergency ? 1 : 0) - (a.emergency ? 1 : 0)); // emergencies first
 
-  for (const o of remaining) {
-    let bestTech = null, bestDist = Infinity;
-    for (const t of TECHS) {
-      if (plannerAssignments[t.id].length >= MAX_JOBS) continue;
-      const d = o.distances?.[t.id] || 999;
-      if (d < bestDist) { bestDist = d; bestTech = t.id; }
+  // Region → Tech mapping
+  // Nord (Ramiz=4 Hamm, Nico K=1 Gütersloh) | Ost (Adem=3 Sundern, Nico W=2 Sundern)
+  const regionTechs = {
+    'nord': [4, 1], // Ramiz, Nico K
+    'ost': [3, 2],  // Adem, Nico W
+  };
+
+  // Step 1: Group by PLZ cluster (same PLZ = same cluster)
+  const clusters = {};
+  for (const o of plannerFiltered) {
+    const key = o.zipcode || 'unknown';
+    if (!clusters[key]) clusters[key] = [];
+    clusters[key].push(o);
+  }
+
+  // Step 2: Sort clusters — emergencies first, then newest, then largest clusters
+  const sortedClusters = Object.values(clusters).sort((a, b) => {
+    const aEmg = a.some(o => o.emergency) ? 1 : 0;
+    const bEmg = b.some(o => o.emergency) ? 1 : 0;
+    if (bEmg !== aEmg) return bEmg - aEmg; // emergencies first
+    // newest cluster first (by most recent order)
+    const aDate = Math.max(...a.map(o => o.dateStr || '').filter(Boolean).map(d => new Date(d).getTime())) || 0;
+    const bDate = Math.max(...b.map(o => o.dateStr || '').filter(Boolean).map(d => new Date(d).getTime())) || 0;
+    if (bDate !== aDate) return bDate - aDate;
+    return b.length - a.length; // larger clusters first
+  });
+
+  // Step 3: Assign each cluster to best tech
+  for (const cluster of sortedClusters) {
+    const sample = cluster[0];
+    const region = sample.region?.toLowerCase();
+
+    // Preferred techs for this region
+    let preferredTechs = regionTechs[region] || TECHS.map(t => t.id);
+
+    // Find best tech: preferred region + closest + has capacity
+    let bestTech = null, bestScore = Infinity;
+    for (const tid of [...preferredTechs, ...TECHS.map(t => t.id)]) {
+      if (plannerAssignments[tid].length + cluster.length > MAX_JOBS) continue;
+      const dist = sample.distances?.[tid] || 999;
+      const regionBonus = preferredTechs.includes(tid) ? 0 : 50; // penalty for wrong region
+      const score = dist + regionBonus;
+      if (score < bestScore) { bestScore = score; bestTech = tid; }
     }
+
     if (bestTech !== null) {
-      plannerAssignments[bestTech].push(o.id);
+      // Sort cluster: emergencies first, then by distance to assigned tech
+      cluster.sort((a, b) => {
+        if (a.emergency && !b.emergency) return -1;
+        if (!a.emergency && b.emergency) return 1;
+        return (a.distances?.[bestTech] || 999) - (b.distances?.[bestTech] || 999);
+      });
+      for (const o of cluster) {
+        if (plannerAssignments[bestTech].length < MAX_JOBS) {
+          plannerAssignments[bestTech].push(o.id);
+        } else {
+          plannerAssignments.unassigned.push(o.id);
+        }
+      }
     } else {
-      plannerAssignments.unassigned.push(o.id);
+      cluster.forEach(o => plannerAssignments.unassigned.push(o.id));
     }
   }
 
@@ -1240,7 +1349,7 @@ function autoAssignPlanner() {
 }
 
 function resetPlanner() {
-  plannerAssignments = { _init: true, unassigned: plannerOrders.map(o => o.id) };
+  plannerAssignments = { _init: true, unassigned: plannerFiltered.map(o => o.id) };
   TECHS.forEach(t => { plannerAssignments[t.id] = []; });
   renderPlannerBoard();
 }
