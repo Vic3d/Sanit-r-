@@ -64,8 +64,8 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v5.3.0</span>
-        <span id="lastUpdate" class="text-sm text-slate-400"></span>
+        <span class="text-xs text-slate-600 font-mono">v5.4.0</span>
+        <span id="lastUpdate" class="text-sm text-slate-400 font-medium"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
           Aktualisieren
@@ -186,13 +186,22 @@ async function buildSharedState() {
     const region = o._region || null;
     const contacted = DATA.orders.contacted?.some(c => getSourceId(c) === getSourceId(o)) || false;
 
+    // Extract phone from Damage text if no primary phone
+    let telephone = o.Telephone || '';
+    const allPhones = [telephone];
+    const damageText = (o.Damage || '') + ' ' + (o.DisturbanceType || '');
+    const phoneMatches = damageText.match(/(?:0[\d\s/\-]{6,15}|\+49[\d\s/\-]{6,15})/g);
+    if (phoneMatches) phoneMatches.forEach(p => { const clean = p.replace(/[\s/\-]/g,''); if (!allPhones.includes(clean)) allPhones.push(clean); });
+    if (!telephone && allPhones.length > 1) telephone = allPhones[1];
+
     return {
       id: String(getSourceId(o)),
       renter: o.Renter || '',
       street: o.Street || '',
       zipcode: o.Zipcode || '',
       city: o.City || '',
-      telephone: o.Telephone || '',
+      telephone,
+      allPhones: allPhones.filter(Boolean),
       craft: o.Craft || '',
       damage: o.Damage || '',
       disturbanceType: o.DisturbanceType || '',
@@ -553,7 +562,7 @@ function renderOrderCard(o, mode = 'full') {
         <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}${o.dateStr ? ` · <span class="${ageColor}">${new Date(o.dateStr).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}${ageText ? ' ('+ageText+')' : ''}</span>` : ''}</div>
         <div class="flex items-center gap-3 mt-1 flex-wrap">
           ${o.craft ? `<span class="text-xs text-slate-500">🔧 ${esc(o.craft)}</span>` : ''}
-          ${o.telephone ? `<a href="tel:${esc(o.telephone.replace(/[^\\d+]/g,''))}" class="text-xs text-blue-400 hover:underline" onclick="event.stopPropagation()">📞 ${esc(o.telephone)}</a>` : ''}
+          ${(o.allPhones?.length ? o.allPhones : o.telephone ? [o.telephone] : []).map(p => `<a href="tel:${esc(p.replace(/[^\\d+]/g,''))}" class="text-xs text-blue-400 hover:underline" onclick="event.stopPropagation()">📞 ${esc(p)}</a>`).join('')}
           ${assignedTech ? `<span class="text-xs px-1.5 py-0.5 rounded" style="background:${assignedTech.color}22;color:${assignedTech.color}">👷 ${esc(assignedTech.name)}</span>` : ''}
         </div>`;
 
