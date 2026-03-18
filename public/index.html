@@ -62,7 +62,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v3.7.0</span>
+        <span class="text-xs text-slate-600 font-mono">v3.8.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -620,24 +620,25 @@ function renderRoutes() {
   setTimeout(() => {
     initRouteMap();
     if (STATE.ready && routeSelectedTech) loadRouteOrders();
-    // Restore last calculated route on map
     if (lastRouteResult) renderRouteResult(lastRouteResult);
   }, 150);
-
-  setTimeout(() => initRouteMap(), 100);
 }
 
 function initRouteMap() {
   const mapEl = document.getElementById('route-map');
   if (!mapEl) return;
-  if (routeMap) { routeMap.remove(); routeMap = null; }
+
+  // If map already exists, just resize it (Leaflet needs this after tab switch)
+  if (routeMap) {
+    routeMap.invalidateSize();
+    return;
+  }
 
   routeMap = L.map('route-map', { center: [51.55, 8.1], zoom: 9, zoomControl: true });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OSM &copy; CARTO', maxZoom: 19,
   }).addTo(routeMap);
 
-  // Show selected tech's home or all homes
   showTechHomes();
 }
 
@@ -796,16 +797,32 @@ function showSelectedOnMap() {
   const tech = TECHS.find(t => t.id === routeSelectedTech);
   if (!tech) return;
 
-  for (const o of routeAllOrders) {
-    if (!routeSelectedOrders.has(o.id) || !o.coords) continue;
+  const selected = routeAllOrders.filter(o => routeSelectedOrders.has(o.id) && o.coords);
+  if (!selected.length) return;
+
+  // Draw markers for selected orders
+  const allCoords = [[tech.home[1], tech.home[0]]];
+  selected.forEach((o, idx) => {
+    const latLng = [o.coords[1], o.coords[0]];
+    allCoords.push(latLng);
     const icon = L.divIcon({
-      html: `<div style="background:${tech.color};color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);">●</div>`,
-      className: '', iconSize: [22, 22], iconAnchor: [11, 11],
+      html: `<div style="background:${tech.color};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);">${idx+1}</div>`,
+      className: '', iconSize: [24, 24], iconAnchor: [12, 12],
     });
-    const m = L.marker([o.coords[1], o.coords[0]], { icon }).addTo(routeMap)
-      .bindPopup(`<strong>${esc(o.renter)}</strong><br>${esc(o.street)}<br>${esc(o.zipcode)} ${esc(o.city)}`);
+    const m = L.marker(latLng, { icon }).addTo(routeMap)
+      .bindPopup(`<strong>${esc(o.renter)}</strong><br>${esc(o.street)}<br>${esc(o.zipcode)} ${esc(o.city)}${o.telephone ? '<br>📞 '+esc(o.telephone) : ''}`);
     routeMapLayers.push(m);
+  });
+
+  // Draw connecting line (dashed) from tech home through all selected
+  if (selected.length > 1) {
+    const lineCoords = [[tech.home[1], tech.home[0]], ...selected.map(o => [o.coords[1], o.coords[0]])];
+    const polyline = L.polyline(lineCoords, { color: tech.color, weight: 2, opacity: 0.5, dashArray: '6 4' }).addTo(routeMap);
+    routeMapLayers.push(polyline);
   }
+
+  // Fit map to show all points
+  if (allCoords.length > 1) routeMap.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
 }
 
 // ── PLZ → Koordinaten Lookup (eingebettet, kein API Call!) ──
