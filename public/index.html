@@ -64,7 +64,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v6.0.0</span>
+        <span class="text-xs text-slate-600 font-mono">v6.0.1</span>
         <span id="lastUpdate" class="text-sm text-slate-400 font-medium"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -1671,7 +1671,7 @@ function renderPlannerColumn(colId, title, color, orders, tech) {
   const pct = tech ? Math.min(100, Math.round(count / MAX_JOBS * 100)) : 0;
   const capColor = pct > 90 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#22c55e';
 
-  let html = `<div class="card overflow-hidden" style="border-top: 3px solid ${color}">
+  let html = `<div class="card overflow-hidden planner-col" data-col="${colId}" style="border-top: 3px solid ${color}">
     <div class="p-3 border-b border-dark-border">
       <div class="flex items-center justify-between mb-1">
         <span class="text-sm font-bold text-white">${esc(title)}</span>
@@ -1704,7 +1704,7 @@ function renderPlannerColumn(colId, title, color, orders, tech) {
       </div>`;
       })() : `<div class="text-xs text-slate-500">${count} übrig</div>`}
     </div>
-    <div class="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto" id="col-${colId}" data-col="${colId}">`;
+    <div class="p-2 space-y-2 min-h-[200px] max-h-[600px] overflow-y-auto planner-col" id="col-${colId}" data-col="${colId}">`;
 
   let prevCoords = tech ? tech.home : null;
   for (let oi = 0; oi < orders.length; oi++) {
@@ -1760,27 +1760,32 @@ function renderPlannerColumn(colId, title, color, orders, tech) {
 }
 
 function initPlannerDragDrop() {
-  const columns = document.querySelectorAll('[data-col]');
-  columns.forEach(col => {
-    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('bg-slate-800/50'); });
-    col.addEventListener('dragleave', () => { col.classList.remove('bg-slate-800/50'); });
+  // Make the entire column card a drop zone (not just the inner div)
+  document.querySelectorAll('.planner-col').forEach(col => {
+    const colId = col.dataset.col;
+    if (!colId) return;
+    col.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; col.style.outline = '2px dashed #60a5fa'; col.style.outlineOffset = '-2px'; });
+    col.addEventListener('dragleave', e => { if (!col.contains(e.relatedTarget)) col.style.outline = ''; });
     col.addEventListener('drop', e => {
       e.preventDefault();
-      col.classList.remove('bg-slate-800/50');
+      col.style.outline = '';
       const orderId = e.dataTransfer.getData('text/plain');
-      const targetCol = col.dataset.col;
-      if (!orderId || !targetCol) return;
-      moveOrderToColumn(orderId, targetCol);
+      if (orderId && colId) moveOrderToColumn(orderId, colId);
     });
   });
 
-  const cards = document.querySelectorAll('[draggable="true"]');
-  cards.forEach(card => {
+  document.querySelectorAll('[draggable="true"]').forEach(card => {
     card.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/plain', card.dataset.orderId);
-      card.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+      card.style.opacity = '0.4';
+      // Highlight all drop zones
+      document.querySelectorAll('.planner-col').forEach(c => c.style.border = '2px dashed #475569');
     });
-    card.addEventListener('dragend', e => { card.style.opacity = '1'; });
+    card.addEventListener('dragend', e => {
+      card.style.opacity = '1';
+      document.querySelectorAll('.planner-col').forEach(c => { c.style.border = ''; c.style.outline = ''; });
+    });
   });
 }
 
