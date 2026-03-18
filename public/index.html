@@ -64,7 +64,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v6.1.3</span>
+        <span class="text-xs text-slate-600 font-mono">v6.2.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400 font-medium"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -246,17 +246,21 @@ function getAssignedTech(orderId) {
 
 // Assign order to tech (used from any tab)
 function assignOrderToTech(orderId, techId) {
+  const oid = String(orderId);
   // Remove from all columns
+  let removed = false;
   for (const key of Object.keys(STATE.assignments)) {
-    if (key === '_init') continue;
+    if (key === '_init' || key === '_plannerInit') continue;
     const arr = STATE.assignments[key];
-    const idx = arr.indexOf(orderId);
-    if (idx !== -1) arr.splice(idx, 1);
+    if (!Array.isArray(arr)) continue;
+    const idx = arr.indexOf(oid);
+    if (idx !== -1) { arr.splice(idx, 1); removed = true; }
   }
   // Add to target
   const targetKey = techId === 'unassigned' ? 'unassigned' : parseInt(techId);
   if (!STATE.assignments[targetKey]) STATE.assignments[targetKey] = [];
-  STATE.assignments[targetKey].push(orderId);
+  STATE.assignments[targetKey].push(oid);
+  console.log('[Assign]', oid, '→', targetKey, 'removed:', removed, 'unassigned:', STATE.assignments.unassigned?.length, 'target:', STATE.assignments[targetKey]?.length);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1558,7 +1562,7 @@ function renderPlanner() {
       const age = dateStr ? Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000) : null;
       const region = o._region || (plannerRegionMap && plannerRegionMap[o.Zipcode]) || null;
       return {
-        id: getSourceId(o),
+        id: String(getSourceId(o)),
         renter: o.Renter || '',
         street: o.Street || '',
         zipcode: o.Zipcode || '',
@@ -1576,7 +1580,25 @@ function renderPlanner() {
       };
     }).sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || '')); // newest first
 
-    applyPlannerFilter();
+    // Only reset assignments if not already set (preserve drag & drop state)
+    if (!STATE.assignments._plannerInit) {
+      applyPlannerFilter();
+    } else {
+      // Just update the filtered list without resetting assignments
+      const f = plannerFilter;
+      if (f === 'all') {
+        plannerFiltered = [...plannerOrders];
+      } else if (f.startsWith('newest')) {
+        const days = parseInt(f.replace('newest', ''));
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+        const cut = cutoff.toISOString().split('T')[0];
+        plannerFiltered = plannerOrders.filter(o => o.dateStr >= cut);
+      } else if (f === 'emergency') {
+        plannerFiltered = plannerOrders.filter(o => o.emergency);
+      } else {
+        plannerFiltered = [...plannerOrders];
+      }
+    }
     renderPlannerBoard();
   });
 }
@@ -1597,7 +1619,7 @@ function applyPlannerFilter() {
   }
 
   // Reset shared assignments for filtered set
-  STATE.assignments = { _init: true, unassigned: plannerFiltered.map(o => o.id) };
+  STATE.assignments = { _init: true, _plannerInit: true, unassigned: plannerFiltered.map(o => String(o.id)) };
   TECHS.forEach(t => { STATE.assignments[t.id] = []; });
   plannerAssignments = { ...STATE.assignments };
 }
