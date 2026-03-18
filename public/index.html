@@ -64,7 +64,7 @@
         <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
       </div>
       <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v5.1.0</span>
+        <span class="text-xs text-slate-600 font-mono">v5.2.0</span>
         <span id="lastUpdate" class="text-sm text-slate-400"></span>
         <button onclick="loadData(true)" id="refreshBtn"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -468,8 +468,8 @@ function renderDashboard() {
   const todayStr = now.toISOString().split('T')[0];
   const todayFollowUps = orders.filter(o => getOrderFollowUp(o.id) === todayStr);
   if (todayFollowUps.length) {
-    html += `<div class="card p-4 mb-6 border-amber-500/50 bg-amber-900/10">
-      <h3 class="text-amber-400 font-bold mb-2">🔔 Wiedervorlagen heute (${todayFollowUps.length})</h3>
+    html += `<div class="card p-4 mb-4 border-amber-500/50 bg-amber-900/10">
+      <h3 class="text-amber-400 font-bold text-sm mb-2">🔔 Wiedervorlagen heute (${todayFollowUps.length})</h3>
       <div class="grid gap-2">`;
     todayFollowUps.forEach(o => { html += renderOrderCard(o, 'compact'); });
     html += '</div></div>';
@@ -478,28 +478,11 @@ function renderDashboard() {
   // Termine heute
   const todayApts = getAppointmentsForDate(todayStr);
   if (todayApts.length) {
-    html += `<div class="card p-4 mb-6 border-green-500/50 bg-green-900/10">
-      <h3 class="text-green-400 font-bold mb-2">📅 Termine heute (${todayApts.length})</h3>
+    html += `<div class="card p-4 mb-4 border-green-500/50 bg-green-900/10">
+      <h3 class="text-green-400 font-bold text-sm mb-2">📅 Termine heute (${todayApts.length})</h3>
       <div class="grid gap-2">`;
     todayApts.forEach(a => { html += renderOrderCard(a.order, 'compact'); });
     html += '</div></div>';
-  }
-
-  // Dringend: Notfälle + Überfällige
-  const urgent = orders.filter(o => {
-    const s = getOrderStatus(o.id);
-    return (o.emergency || o.age > 7) && s !== 'erledigt' && s !== 'abgerechnet';
-  }).sort((a, b) => {
-    if (a.emergency && !b.emergency) return -1;
-    if (!a.emergency && b.emergency) return 1;
-    return (b.age || 0) - (a.age || 0);
-  }).slice(0, 10);
-
-  if (urgent.length) {
-    html += `<h3 class="text-white font-bold mb-3">🚨 Sofort handeln</h3>
-    <div class="grid gap-2 mb-6">`;
-    urgent.forEach(o => { html += renderOrderCard(o, 'compact'); });
-    html += '</div>';
   }
 
   // Monteur-Kapazität
@@ -520,10 +503,10 @@ function renderDashboard() {
   });
   html += '</div>';
 
-  // Neueste Aufträge
-  const newest = orders.filter(o => getOrderStatus(o.id) === 'neu').sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || '')).slice(0, 5);
+  // Neueste Aufträge (alle, nach Datum sortiert)
+  const newest = [...orders].sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || '')).slice(0, 10);
   if (newest.length) {
-    html += `<h3 class="text-white font-bold mb-3">📥 Neueste offene Aufträge</h3>
+    html += `<h3 class="text-white font-bold text-sm mb-3">📥 Neueste Aufträge</h3>
     <div class="grid gap-2 mb-6">`;
     newest.forEach(o => { html += renderOrderCard(o, 'compact'); });
     html += '</div>';
@@ -547,37 +530,31 @@ function renderOrderCard(o, mode = 'full') {
   const status = getOrderStatus(o.id);
   const sl = STATUS_LABELS[status] || STATUS_LABELS['neu'];
   const note = getOrderNote(o.id);
-  const ageText = o.age !== null ? (o.age === 0 ? 'heute' : o.age === 1 ? 'gestern' : `vor ${o.age} Tagen`) : '';
+  const ageText = o.age !== null ? (o.age === 0 ? 'heute' : o.age === 1 ? 'gestern' : `vor ${o.age}d`) : '';
   const ageColor = o.age > 14 ? 'text-amber-400' : o.age > 7 ? 'text-amber-500' : 'text-slate-500';
   const assignedTech = getAssignedTech(o.id);
-  const nearestTech = TECHS.reduce((best, t) => {
-    const d = o.distances?.[t.id];
-    return d !== undefined && (best === null || d < best.dist) ? { tech: t, dist: d } : best;
-  }, null);
 
-  let html = `<div class="card p-3 ${o.emergency ? 'border-red-500/50 bg-red-900/10' : ''}" style="border-left:4px solid ${sl.color}">
+  let html = `<div id="card-${esc(o.id)}" class="card p-3 ${o.emergency ? 'border-red-500/50 bg-red-900/10' : ''}" style="border-left:4px solid ${sl.color}">
     <div class="flex items-start gap-3">
       <div class="flex-shrink-0 relative">
-        <button onclick="event.stopPropagation();toggleStatusDropdown('${esc(o.id)}')" class="w-10 h-10 rounded-lg flex items-center justify-center text-lg" style="background:${sl.color}22" title="Status: ${sl.label}">${sl.icon}</button>
-        <div id="status-dd-${esc(o.id)}" class="hidden absolute left-0 top-11 z-50 bg-dark-card border border-dark-border rounded-lg shadow-xl py-1 w-36">
+        <button onclick="event.stopPropagation();toggleStatusDropdown('${esc(o.id)}')" class="w-9 h-9 rounded-lg flex items-center justify-center text-base" style="background:${sl.color}22" title="Status: ${sl.label}">${sl.icon}</button>
+        <div id="status-dd-${esc(o.id)}" class="hidden absolute left-0 top-10 z-50 bg-dark-card border border-dark-border rounded-lg shadow-xl py-1 w-36">
           ${Object.entries(STATUS_LABELS).map(([k, v]) => `<button onclick="event.stopPropagation();setOrderStatus('${esc(o.id)}','${k}')" class="w-full px-3 py-1.5 text-left text-xs hover:bg-dark-hover flex items-center gap-2 ${k===status?'text-white font-bold':'text-slate-400'}">${v.icon} ${v.label}</button>`).join('')}
         </div>
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
-          ${o.emergency ? '<span class="text-xs font-bold px-1.5 py-0.5 bg-red-900/50 text-red-400 rounded">⚡ NOTFALL</span>' : ''}
+          <span class="font-mono text-xs text-slate-500">#${esc(o.id)}</span>
+          ${o.emergency ? '<span class="text-xs font-bold px-1 py-0.5 bg-red-900/50 text-red-400 rounded">⚡</span>' : ''}
           <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
+          ${o.contacted ? '<span class="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-400">✅ Kontaktiert</span>' : '<span class="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">📞 Offen</span>'}
           ${ageText ? `<span class="text-xs ${ageColor}">${ageText}</span>` : ''}
         </div>
         <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
-        <div class="text-xs text-slate-500 mt-0.5">
-          ${o.craft ? '🔧 ' + esc(o.craft) : ''}
-          ${o.damage ? ' — ' + esc(o.damage.substring(0, 80)) : o.disturbanceType ? ' — ' + esc(o.disturbanceType) : ''}
-        </div>
         <div class="flex items-center gap-3 mt-1 flex-wrap">
+          ${o.craft ? `<span class="text-xs text-slate-500">🔧 ${esc(o.craft)}</span>` : ''}
           ${o.telephone ? `<a href="tel:${esc(o.telephone.replace(/[^\\d+]/g,''))}" class="text-xs text-blue-400 hover:underline" onclick="event.stopPropagation()">📞 ${esc(o.telephone)}</a>` : ''}
           ${assignedTech ? `<span class="text-xs px-1.5 py-0.5 rounded" style="background:${assignedTech.color}22;color:${assignedTech.color}">👷 ${esc(assignedTech.name)}</span>` : ''}
-          ${nearestTech ? `<span class="text-xs text-slate-500">📍 ${nearestTech.dist} km (${esc(nearestTech.tech.name)})</span>` : ''}
         </div>`;
 
   const followUp = getOrderFollowUp(o.id);
@@ -775,12 +752,18 @@ function renderOrders() {
     if (o.age > 7 && s !== 'erledigt' && s !== 'abgerechnet') counts.ueberfaellig++;
   });
 
-  let html = `<div class="flex flex-wrap gap-2 mb-4">
-    ${['alle','neu','kontaktiert','termin','erledigt','notfall','ueberfaellig'].map(f => {
-      const labels = {alle:'📋 Alle',neu:'🔴 Neu',kontaktiert:'🟡 Kontaktiert',termin:'🟢 Termin',erledigt:'🔵 Erledigt',notfall:'⚡ Notfälle',ueberfaellig:'⏰ Überfällig'};
-      return `<button onclick="orderStatusFilter='${f}';renderOrders()" id="orderStatusFilter"
+  let html = `<div class="flex flex-wrap gap-2 mb-3">
+    ${['alle','neu','kontaktiert','termin','erledigt','ueberfaellig'].map(f => {
+      const labels = {alle:'📋 Alle',neu:'🔴 Neu',kontaktiert:'🟡 Kontaktiert',termin:'🟢 Termin',erledigt:'🔵 Erledigt',ueberfaellig:'⏰ Überfällig'};
+      return `<button onclick="orderStatusFilter='${f}';renderOrders()"
         class="px-3 py-1.5 rounded-lg text-xs font-medium ${orderStatusFilter===f ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}">${labels[f]} (${counts[f]})</button>`;
     }).join('')}
+  </div>
+  <div class="flex gap-2 mb-4 items-center">
+    <span class="text-xs text-slate-500">Sortierung:</span>
+    <button onclick="orderSort='newest';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'newest')==='newest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">🕐 Neueste</button>
+    <button onclick="orderSort='oldest';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'newest')==='oldest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">📅 Älteste</button>
+    <button onclick="orderSort='status';renderOrders()" class="px-2 py-1 text-xs rounded ${(window.orderSort||'newest')==='status'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400'}">🏷️ Status</button>
   </div>`;
 
   // Filter
@@ -793,8 +776,16 @@ function renderOrders() {
     filtered = allOrders.filter(o => getOrderStatus(o.id) === orderStatusFilter);
   }
 
-  // Sort by date (newest first)
-  filtered.sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || ''));
+  // Sort
+  const sort = window.orderSort || 'newest';
+  if (sort === 'newest') {
+    filtered.sort((a, b) => (b.dateStr || '').localeCompare(a.dateStr || ''));
+  } else if (sort === 'oldest') {
+    filtered.sort((a, b) => (a.dateStr || '').localeCompare(b.dateStr || ''));
+  } else if (sort === 'status') {
+    const statusOrder = {neu:0,kontaktiert:1,termin:2,erledigt:3,abgerechnet:4};
+    filtered.sort((a, b) => (statusOrder[getOrderStatus(a.id)]||0) - (statusOrder[getOrderStatus(b.id)]||0));
+  }
 
   if (!filtered.length) {
     html += '<div class="card p-8 text-center text-slate-400">Keine Aufträge in dieser Kategorie</div>';
