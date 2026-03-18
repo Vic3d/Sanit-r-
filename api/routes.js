@@ -123,15 +123,20 @@ module.exports = async (req, res) => {
     if (req.method === 'POST' && body.action === 'geocode') {
       const plzList = body.plzList || [];
       const plzCoords = {};
+      const errors = [];
+      const keyPreview = ORS_KEY ? ORS_KEY.substring(0, 10) + '...' : 'MISSING';
       for (let i = 0; i < plzList.length; i++) {
         const plz = plzList[i];
         try {
           const coords = await geocodeAddress(`${plz}, Deutschland`);
           if (coords) plzCoords[plz] = coords;
-        } catch (e) { /* skip */ }
+          else errors.push({ plz, error: 'no results' });
+        } catch (e) {
+          errors.push({ plz, error: e.message });
+        }
         if (i < plzList.length - 1) await new Promise(r => setTimeout(r, 80));
       }
-      return res.json({ plzCoords, count: Object.keys(plzCoords).length });
+      return res.json({ plzCoords, count: Object.keys(plzCoords).length, requested: plzList.length, errors: errors.slice(0, 5), keyPreview });
     }
 
     // MODE 2b: POST /api/routes — optimize route for selected tech + orders
