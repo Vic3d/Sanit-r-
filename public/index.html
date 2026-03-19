@@ -2462,9 +2462,7 @@ function showEmailSummary() {
   const anfragen = d.byCategory.ANFRAGE || [];
 
   const text =
-`Hallo Josh 👋
-
-Kurzes E-Mail Update vom ${today}:
+`📧 E-Mail Update ${today}
 
 🚨 Dringend:
 ${dringend.length ? dringend.map(fmtLine).join('\n') : '– nichts'}
@@ -2476,9 +2474,7 @@ ${fmtSection(neueAuftraege)}
 ${fmtSection(offen)}
 
 💬 Kundenanfragen:
-${anfragen.length ? anfragen.map(fmtLine).join('\n') : '– keine'}
-
-Grüße, Victor`;
+${anfragen.length ? anfragen.map(fmtLine).join('\n') : '– keine'}`;
 
   box.classList.remove('hidden');
   box.innerHTML = `
