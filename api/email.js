@@ -17,10 +17,14 @@ const ACCOUNTS = [
 
 // ── Klassifikations-Regeln ────────────────────────────────────
 const URGENT_KW    = ['notfall', 'dringend', 'sofort', 'leck', 'rohrbruch', 'wassereinbruch', 'gasgeruch', 'überschwemmung', 'havarie', 'nass'];
-const ORDER_KW     = ['b&o', 'buo', 'buo_auftrag', 'tsp', 'kopplung', 'bohandwerkerkopplung', 'handwerkerkopplung', 'pertec', 'risadelli', 'technikserviceplus', 'reparaturauftrag', 'als anlage erhalten', 'zahlungsavis', 'hausverwaltung'];
+const ORDER_KW     = ['b&o', 'buo', 'buo_auftrag', 'tsp', 'kopplung', 'bohandwerkerkopplung', 'handwerkerkopplung', 'pertec', 'risadelli', 'technikserviceplus', 'reparaturauftrag', 'als anlage erhalten', 'zahlungsavis', 'hausverwaltung', 'gewoge', 'stellungnahme'];
 const INQUIRY_KW   = ['anfrage', 'angebot', 'kostenvoranschlag', 'reparatur', 'installation', 'wartung', 'heizung', 'sanitär', 'therme', 'boiler', 'heizkörper', 'badezimmer', 'waschtisch', 'gastherme', 'warmwasser', 'termin vereinbar', 'haben sie zeit'];
-const SPAM_SENDERS = ['myhammer', 'my-hammer', 'noreply@info.my-hammer', 'noreply-bohandwe', 'qm-akademie', 'viessmann.live', 'fachverband shk', 'dortmund@info.vi', 'instagram', 'xing.com', 'linkedin', 'kununu', 'stepstone', 'newsletter', 'noreply@info.', 'marketing@', 'no-reply@'];
-const SPAM_WORDS   = ['newsletter', 'abmelden', 'gutschein', 'rabatt', 'aktion bis', 'jetzt bestellen', 'nur heute', 'angebot gültig', 'schadstoff'];
+const SPAM_SENDERS = ['myhammer', 'my-hammer', 'noreply@info.my-hammer', 'noreply-bohandwe', 'qm-akademie', 'viessmann.live', 'fachverband shk', 'dortmund@info.vi', 'instagram', 'xing.com', 'linkedin', 'kununu', 'stepstone', 'newsletter', 'noreply@info.', 'marketing@', 'no-reply@', 'gopro', 'boosevelt'];
+const SPAM_WORDS   = ['newsletter', 'abmelden', 'gutschein', 'rabatt', 'aktion bis', 'jetzt bestellen', 'nur heute', 'angebot gültig', 'schadstoff', 'fake trustpilot', 'awaiting reply', 'konjunkturumfrage'];
+
+// B&O Auftragsnummern: "Auftrag 259206007" oder reine 9-stellige B&O-Nummern (25x / 26x)
+const BO_AUFTRAG_RX = /\bauftrag\s+\d{5,}/i;
+const BO_NUM_RX     = /\b2[56]\d{7}\b/;
 
 function classify(text, sender) {
   const t = text.toLowerCase();
@@ -29,11 +33,24 @@ function classify(text, sender) {
     return 'SPAM';
   if (URGENT_KW.some(kw => t.includes(kw)))
     return 'DRINGEND';
-  if (ORDER_KW.some(kw => t.includes(kw)))
+  if (ORDER_KW.some(kw => t.includes(kw)) || BO_AUFTRAG_RX.test(text) || BO_NUM_RX.test(text))
     return 'AUFTRAG';
   if (INQUIRY_KW.some(kw => t.includes(kw)))
     return 'ANFRAGE';
   return 'SONSTIGE';
+}
+
+// Lesbare Anzeigenamen für den Report — kürzt E-Mail-Adressen weg
+function displayName(sender, subject) {
+  if (!sender || sender === '—') return subject || '?';
+  // Wenn Sender wie eine E-Mail-Adresse aussieht → Subject verwenden
+  if (sender.includes('@') || (sender.endsWith('...') && !sender.includes(' ')))
+    return subject || sender;
+  // Sender aufräumen: "Nachname, Vorname" → "Vorname Nachname"
+  const clean = sender.replace(/\.\.\.$/, '').trim();
+  const comma = clean.match(/^([^,]+),\s*(.+)$/);
+  if (comma) return `${comma[2]} ${comma[1]}`;
+  return clean;
 }
 
 // ── HTTPS Helper ──────────────────────────────────────────────
@@ -147,7 +164,8 @@ function parseInbox(html, accountName) {
     const hhmm = date.slice(-5);
     const isoDate = `${yyyy}-${MM}-${dd}T${hhmm}`;
 
-    emails.push({ id: msgId, account: accountName, sender, subject, date, isoDate, isUnread, owaLink, category, raw: clean.slice(0, 200) });
+    const display = displayName(sender, subject);
+    emails.push({ id: msgId, account: accountName, sender, subject, display, date, isoDate, isUnread, owaLink, category, raw: clean.slice(0, 200) });
   }
 
   return emails;
