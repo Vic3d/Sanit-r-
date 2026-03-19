@@ -107,6 +107,10 @@
         class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">🗺️ Routen</button>
       <button onclick="switchTab('calendar')" id="tab-calendar"
         class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📅 Kalender</button>
+      <button onclick="switchTab('email');loadEmails()" id="tab-email"
+        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive relative">
+        📧 Postfach<span id="email-badge" class="hidden ml-1 bg-red-600 text-white text-xs rounded-full px-1.5 py-0.5"></span>
+      </button>
     </div>
 
     <!-- Tab Content -->
@@ -117,6 +121,7 @@
     <div id="content-routes" class="hidden"></div>
     <div id="content-techs" class="hidden"></div>
     <div id="content-calendar" class="hidden"></div>
+    <div id="content-email" class="hidden"></div>
 
     <!-- Mobile Bottom Nav -->
     <div class="fixed bottom-0 left-0 right-0 bg-dark-card border-t border-dark-border md:hidden z-50 safe-bottom">
@@ -135,6 +140,9 @@
         </button>
         <button onclick="switchTab('calendar')" id="mob-calendar" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
           <span class="text-lg">📆</span><span class="text-xs">Kalender</span>
+        </button>
+        <button onclick="switchTab('email');loadEmails()" id="mob-email" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400 relative">
+          <span class="text-lg">📧</span><span class="text-xs">Postfach</span>
         </button>
       </div>
     </div>
@@ -312,7 +320,7 @@ function updateStats() {
 // ═══════════════════════════════════════════════════════════════
 function switchTab(tab) {
   currentTab = tab;
-  ['dashboard', 'orders', 'contact', 'routes', 'planner', 'techs', 'calendar'].forEach(t => {
+  ['dashboard', 'orders', 'contact', 'routes', 'planner', 'techs', 'calendar', 'email'].forEach(t => {
     const el = document.getElementById('content-' + t);
     if (el) el.classList.toggle('hidden', t !== tab);
     const tabBtn = document.getElementById('tab-' + t);
@@ -334,6 +342,7 @@ function renderCurrentTab() {
     case 'planner': renderPlanner(); break;
     case 'techs': renderTechs(); break;
     case 'calendar': renderCalendar(); break;
+    case 'email': renderEmail(); break;
   }
 }
 
@@ -2265,6 +2274,145 @@ function renderTechs() {
 loadData();
 
 // Auto-refresh deaktiviert — nur manuell per Button
+
+
+// ═══════════════════════════════════════════════════════════════
+// 📧 EMAIL TRIAGE TAB
+// ═══════════════════════════════════════════════════════════════
+
+let EMAIL_DATA = null;
+let EMAIL_LOADING = false;
+let SPAM_OPEN = false;
+
+async function loadEmails(force = false) {
+  if (EMAIL_LOADING) return;
+  EMAIL_LOADING = true;
+  const panel = document.getElementById('content-email');
+  panel.innerHTML = `<div class="flex items-center justify-center gap-3 py-16 text-slate-400">
+    <div class="w-5 h-5 border-2 border-slate-600 border-t-blue-400 rounded-full animate-spin"></div>
+    <span>Postfächer werden geladen…</span></div>`;
+
+  try {
+    const url = `/api/email${force ? '?refresh=1' : ''}`;
+    const r = await fetch(url);
+    EMAIL_DATA = await r.json();
+    // Unread-Badge auf Tab setzen
+    const badge = document.getElementById('email-badge');
+    if (EMAIL_DATA.unread > 0) {
+      badge.textContent = EMAIL_DATA.unread;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+    renderEmail();
+  } catch (e) {
+    document.getElementById('content-email').innerHTML =
+      `<div class="card p-4 text-red-400">⚠️ Fehler: ${e.message}</div>`;
+  } finally {
+    EMAIL_LOADING = false;
+  }
+}
+
+function renderEmail() {
+  const panel = document.getElementById('content-email');
+  if (!EMAIL_DATA) {
+    panel.innerHTML = `<div class="text-slate-400 text-center py-8">Noch nicht geladen.</div>`;
+    return;
+  }
+
+  const d = EMAIL_DATA;
+  const cacheInfo = d.cached
+    ? `<span class="text-xs text-slate-500">Cache (${d.cacheAge}s alt)</span>`
+    : `<span class="text-xs text-green-600">Live</span>`;
+
+  const cats = [
+    { key: 'DRINGEND', label: '🚨 Dringend',   color: 'border-red-700 bg-red-950/40',    badge: 'bg-red-700',    alwaysOpen: true  },
+    { key: 'AUFTRAG',  label: '📦 Auftrag',     color: 'border-blue-700 bg-blue-950/30',  badge: 'bg-blue-700',   alwaysOpen: true  },
+    { key: 'ANFRAGE',  label: '💬 Anfrage',     color: 'border-yellow-700 bg-yellow-950/30', badge: 'bg-yellow-700', alwaysOpen: true },
+    { key: 'SONSTIGE', label: '📄 Sonstige',    color: 'border-slate-700 bg-slate-800/30', badge: 'bg-slate-600',  alwaysOpen: true  },
+    { key: 'SPAM',     label: '🗑️ Spam',        color: 'border-slate-800 bg-slate-900/20', badge: 'bg-slate-700',  alwaysOpen: false },
+  ];
+
+  let html = `
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-bold text-white">📧 Postfach</h2>
+        <div class="text-sm text-slate-400 mt-0.5">${d.total} E-Mails · ${d.unread} ungelesen · ${cacheInfo}</div>
+      </div>
+      <button onclick="loadEmails(true)" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
+        🔄 Aktualisieren
+      </button>
+    </div>`;
+
+  if (d.errors && d.errors.length > 0) {
+    html += `<div class="card p-3 mb-4 border border-orange-800 bg-orange-950/30 text-orange-300 text-sm">
+      ⚠️ ${d.errors.join(' · ')}</div>`;
+  }
+
+  for (const cat of cats) {
+    const emails = d.byCategory[cat.key] || [];
+    const isOpen = cat.alwaysOpen || SPAM_OPEN;
+    const unread = emails.filter(e => e.isUnread).length;
+
+    html += `<div class="card mb-3 border ${cat.color} overflow-hidden">
+      <div class="flex items-center gap-3 p-3 cursor-pointer select-none"
+           onclick="toggleEmailCat('${cat.key}')">
+        <span class="font-semibold text-white text-sm">${cat.label}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full text-white ${cat.badge}">${emails.length}</span>
+        ${unread > 0 ? `<span class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white">${unread} ungelesen</span>` : ''}
+        <span class="ml-auto text-slate-500 text-sm transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}"
+              id="chevron-${cat.key}">▼</span>
+      </div>
+      <div id="emailcat-${cat.key}" class="${isOpen ? '' : 'hidden'}">
+        ${emails.length === 0
+          ? `<div class="px-4 pb-3 text-slate-500 text-sm">Keine E-Mails</div>`
+          : emails.map(e => renderEmailRow(e)).join('')}
+      </div>
+    </div>`;
+  }
+
+  panel.innerHTML = html;
+}
+
+function renderEmailRow(e) {
+  const unreadDot = e.isUnread
+    ? `<span class="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0 mt-1.5"></span>`
+    : `<span class="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"></span>`;
+  const accountBadge = `<span class="text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">${e.account}</span>`;
+  const link = e.owaLink
+    ? `<a href="${e.owaLink}" target="_blank" rel="noopener"
+          class="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors">
+          Öffnen ↗</a>`
+    : '';
+
+  return `<div class="flex items-start gap-3 px-4 py-2.5 border-t border-slate-800 hover:bg-slate-800/40 transition-colors">
+    ${unreadDot}
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-sm ${e.isUnread ? 'font-semibold text-white' : 'text-slate-300'} truncate max-w-xs">
+          ${esc(e.sender || '—')}
+        </span>
+        ${accountBadge}
+      </div>
+      <div class="text-sm text-slate-400 truncate mt-0.5">${esc(e.subject || e.raw || '—')}</div>
+      <div class="text-xs text-slate-600 mt-1">${e.date}</div>
+    </div>
+    <div class="flex-shrink-0">${link}</div>
+  </div>`;
+}
+
+function toggleEmailCat(key) {
+  const el = document.getElementById('emailcat-' + key);
+  const chev = document.getElementById('chevron-' + key);
+  if (!el) return;
+  const open = el.classList.toggle('hidden');
+  if (chev) chev.style.transform = open ? 'rotate(-90deg)' : 'rotate(0deg)';
+  if (key === 'SPAM') SPAM_OPEN = !open;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 </script>
 </body>
 </html>
