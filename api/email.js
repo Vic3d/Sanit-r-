@@ -19,8 +19,8 @@ const ACCOUNTS = [
 const URGENT_KW    = ['notfall', 'dringend', 'sofort', 'leck', 'rohrbruch', 'wassereinbruch', 'gasgeruch', 'überschwemmung', 'havarie', 'nass'];
 const ORDER_KW     = ['b&o', 'buo', 'buo_auftrag', 'tsp', 'kopplung', 'bohandwerkerkopplung', 'handwerkerkopplung', 'pertec', 'risadelli', 'technikserviceplus', 'reparaturauftrag', 'als anlage erhalten', 'zahlungsavis', 'hausverwaltung'];
 const INQUIRY_KW   = ['anfrage', 'angebot', 'kostenvoranschlag', 'reparatur', 'installation', 'wartung', 'heizung', 'sanitär', 'therme', 'boiler', 'heizkörper', 'badezimmer', 'waschtisch', 'gastherme', 'warmwasser', 'termin vereinbar', 'haben sie zeit'];
-const SPAM_SENDERS = ['myhammer', 'my-hammer', 'noreply@info.my-hammer', 'qm-akademie', 'viessmann.live', 'fachverband shk', 'dortmund@info.vi', 'instagram', 'schadstoffhinweis', 'xing.com', 'linkedin', 'kununu', 'stepstone', 'newsletter', 'noreply@info.', 'marketing@', 'no-reply@'];
-const SPAM_WORDS   = ['newsletter', 'abmelden', 'gutschein', 'rabatt', 'aktion bis', 'jetzt bestellen', 'nur heute', 'angebot gültig', 'schadstoffhinweis'];
+const SPAM_SENDERS = ['myhammer', 'my-hammer', 'noreply@info.my-hammer', 'noreply-bohandwe', 'qm-akademie', 'viessmann.live', 'fachverband shk', 'dortmund@info.vi', 'instagram', 'xing.com', 'linkedin', 'kununu', 'stepstone', 'newsletter', 'noreply@info.', 'marketing@', 'no-reply@'];
+const SPAM_WORDS   = ['newsletter', 'abmelden', 'gutschein', 'rabatt', 'aktion bis', 'jetzt bestellen', 'nur heute', 'angebot gültig', 'schadstoff'];
 
 function classify(text, sender) {
   const t = text.toLowerCase();
@@ -109,20 +109,25 @@ function parseInbox(html, accountName) {
   let rowMatch;
   while ((rowMatch = rowRx.exec(html)) !== null) {
     const raw = rowMatch[1];
-    const clean = raw
+
+    // Zellen separat extrahieren (</td> als Trenner) → bessere Sender/Subject-Trennung
+    const cells = raw
+      .replace(/<\/td>/gi, '\x00')
       .replace(/<[^>]+>/g, ' ')
       .replace(/&nbsp;/g, ' ')
       .replace(/&#(\d+);/g, (_, n) => n < 65536 ? String.fromCharCode(n) : '?')
       .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/\s+/g, ' ').trim();
+      .split('\x00')
+      .map(c => c.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
 
+    const clean = cells.join(' ');
     const dm = dateRx.exec(clean);
     if (!dm || clean.length < 20) continue;
 
-    const before = clean.slice(0, dm.index).trim();
-    const date   = `${dm[1]} ${dm[2]}`;
-    const sm     = sizeRx.exec(clean);
-    const msgId  = allIds[idx] || '';
+    const date  = `${dm[1]} ${dm[2]}`;
+    const sm    = sizeRx.exec(clean);
+    const msgId = allIds[idx] || '';
     idx++;
 
     const isUnread = /<b>/i.test(raw);
@@ -130,11 +135,10 @@ function parseInbox(html, accountName) {
       ? `https://mail.phx-hosting.de/owa/?ae=Item&t=IPM.Note&id=${encodeURIComponent(msgId)}&a=Open`
       : null;
 
-    // Sender + Subject trennen — Format: "Vorname Name Betreffzeile"
-    // Heuristik: erstes Wort(e) bis Großbuchstabe nach Leerzeichen
-    const parts = before.split(/\s{2,}/);
-    const sender  = parts[0] || before;
-    const subject = parts.slice(1).join(' ') || before;
+    // Sender = erste Nicht-Datum-Zelle, Subject = zweite
+    const contentCells = cells.filter(c => !dateRx.test(c) && !sizeRx.test(c) && c.length > 1);
+    const sender  = contentCells[0] || '—';
+    const subject = contentCells[1] || contentCells[0] || '—';
 
     const category = classify(clean, sender);
 
