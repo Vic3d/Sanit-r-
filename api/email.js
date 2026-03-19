@@ -20,7 +20,7 @@ const URGENT_KW    = ['notfall', 'dringend', 'sofort', 'leck', 'rohrbruch', 'was
 const ORDER_KW     = ['b&o', 'buo', 'buo_auftrag', 'tsp', 'kopplung', 'bohandwerkerkopplung', 'handwerkerkopplung', 'pertec', 'risadelli', 'technikserviceplus', 'reparaturauftrag', 'als anlage erhalten', 'zahlungsavis', 'hausverwaltung'];
 const INQUIRY_KW   = ['anfrage', 'angebot', 'kostenvoranschlag', 'reparatur', 'installation', 'wartung', 'heizung', 'sanitär', 'therme', 'boiler', 'heizkörper', 'badezimmer', 'waschtisch', 'gastherme', 'warmwasser', 'termin vereinbar', 'haben sie zeit'];
 const SPAM_SENDERS = ['myhammer', 'my-hammer', 'noreply@info.my-hammer', 'qm-akademie', 'viessmann.live', 'fachverband shk', 'dortmund@info.vi', 'instagram', 'schadstoffhinweis', 'xing.com', 'linkedin', 'kununu', 'stepstone', 'newsletter', 'noreply@info.', 'marketing@', 'no-reply@'];
-const SPAM_WORDS   = ['newsletter', 'abmelden', 'gutschein', 'rabatt', 'aktion bis', 'jetzt bestellen', 'nur heute', 'angebot gültig'];
+const SPAM_WORDS   = ['newsletter', 'abmelden', 'gutschein', 'rabatt', 'aktion bis', 'jetzt bestellen', 'nur heute', 'angebot gültig', 'schadstoffhinweis'];
 
 function classify(text, sender) {
   const t = text.toLowerCase();
