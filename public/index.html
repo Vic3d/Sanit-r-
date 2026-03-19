@@ -2407,43 +2407,90 @@ function renderEmailRow(e) {
   </div>`;
 }
 
+function fmtEmailDate(isoDate) {
+  if (!isoDate) return '';
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yesterStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const time = isoDate.slice(11, 16);
+  if (isoDate.startsWith(todayStr))     return `heute ${time}`;
+  if (isoDate.startsWith(yesterStr))    return `gestern ${time}`;
+  return isoDate.slice(8,10) + '.' + isoDate.slice(5,7) + '.';
+}
+
+function cleanSubject(s) {
+  if (!s) return '';
+  // Prefixe entfernen: AW:, WG:, FW:, Re:
+  return s.replace(/^(AW|WG|FW|RE|FWD):\s*/i, '').replace(/\.\.\.$/, '').trim();
+}
+
+function cleanDisplayName(display, sender) {
+  if (!display || display === '—') return '';
+  // E-Mail-Adressen komplett durch leeren String ersetzen (wird dann weggelassen)
+  if (display.includes('@')) return '';
+  return display.replace(/\.\.\.$/, '').trim();
+}
+
 function showEmailSummary() {
   if (!EMAIL_DATA) return;
   const box = document.getElementById('email-summary-box');
   const d = EMAIL_DATA;
   const today = new Date().toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'});
 
-  const fmt = (emails) => emails.length === 0
-    ? '  – keine'
-    : emails.slice(0, 8).map(e => `  • ${e.sender || '?'} — ${e.subject || e.raw?.slice(0,60) || '?'}${e.isUnread ? ' 🔵' : ''}`).join('\n');
+  // AUFTRAG aufteilen: Neue Aufträge vs. Offene Punkte
+  const auftraege = d.byCategory.AUFTRAG || [];
+  const neueAuftraege = auftraege.filter(e =>
+    !/(^|\s)(AW|WG|FW|RE|FWD):/i.test(e.subject || '') &&
+    !/(^|\s)(AW|WG|FW|RE|FWD):/i.test(e.sender || '')
+  );
+  const offen = auftraege.filter(e =>
+    /(^|\s)(AW|WG|FW|RE|FWD):/i.test(e.subject || '') ||
+    /(^|\s)(AW|WG|FW|RE|FWD):/i.test(e.sender || '')
+  );
 
-  const text = `📧 E-Mail Tagesreport — ${today}
+  const fmtLine = (e) => {
+    const name = cleanDisplayName(e.display, e.sender);
+    const subj = cleanSubject(e.subject || '');
+    const when = fmtEmailDate(e.isoDate);
+    const namePart = name ? `${name} – ` : '';
+    return `– ${namePart}"${subj}" (${when})`;
+  };
 
-🚨 Dringend (${d.byCategory.DRINGEND.length}):
-${fmt(d.byCategory.DRINGEND)}
+  const fmtSection = (emails) =>
+    emails.length === 0 ? '– keine' : emails.map(fmtLine).join('\n');
 
-📦 Aufträge (${d.byCategory.AUFTRAG.length}):
-${fmt(d.byCategory.AUFTRAG)}
+  const dringend = d.byCategory.DRINGEND || [];
+  const anfragen = d.byCategory.ANFRAGE || [];
 
-💬 Anfragen (${d.byCategory.ANFRAGE.length}):
-${fmt(d.byCategory.ANFRAGE)}
+  const text =
+`Hallo Josh 👋
 
-📄 Sonstige (${d.byCategory.SONSTIGE.length}):
-${fmt(d.byCategory.SONSTIGE)}
+Kurzes E-Mail Update vom ${today}:
 
-🔵 = ungelesen | Gesamt: ${d.total} Mails, ${d.unread} ungelesen`;
+🚨 Dringend:
+${dringend.length ? dringend.map(fmtLine).join('\n') : '– nichts'}
+
+📦 Neue Aufträge:
+${fmtSection(neueAuftraege)}
+
+📋 Offen / Braucht Rückmeldung:
+${fmtSection(offen)}
+
+💬 Kundenanfragen:
+${anfragen.length ? anfragen.map(fmtLine).join('\n') : '– keine'}
+
+Grüße, Victor`;
 
   box.classList.remove('hidden');
   box.innerHTML = `
     <div class="card border border-blue-800 bg-blue-950/30 p-4">
-      <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center justify-between mb-3">
         <span class="text-sm font-semibold text-blue-300">📋 Tagesreport für Josh</span>
         <div class="flex gap-2">
           <button onclick="copyEmailSummary()" class="px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-xs">📋 Kopieren</button>
           <button onclick="document.getElementById('email-summary-box').classList.add('hidden')" class="px-2 py-1 bg-slate-700 text-slate-300 rounded text-xs">✕</button>
         </div>
       </div>
-      <pre id="email-summary-text" class="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed font-mono bg-slate-900/60 rounded p-3 select-all">${esc(text)}</pre>
+      <pre id="email-summary-text" class="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed bg-slate-900/60 rounded p-3 select-all">${esc(text)}</pre>
     </div>`;
   window._emailSummaryText = text;
 }
