@@ -1424,13 +1424,13 @@ function renderRouteResult(data) {
     return;
   }
 
-  // Google Maps URL: start → waypoints → last stop
+  // Google Maps URL: start → alle Stops (optimize:true = Google optimiert Reihenfolge selbst)
   const origin = `${tech.home[1]},${tech.home[0]}`;
-  const waypoints = orders.slice(0, -1).map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
-  const lastOrder = orders[orders.length - 1];
-  const destination = `${lastOrder.coords[1]},${lastOrder.coords[0]}`;
+  // Alle Stops als Waypoints übergeben — optimize:true lässt Google die beste Reihenfolge wählen
+  const allStopCoords = orders.map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
+  const destination = origin; // zurück zum Start (Rundtour) damit Google optimize:true nutzen kann
   let gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-  if (waypoints) gmapsUrl += `&waypoints=${waypoints}`;
+  if (allStopCoords) gmapsUrl += `&waypoints=optimize:true|${allStopCoords}`;
 
   // Ausreißer-Warnung: Aufträge >60km Luftlinie vom Techniker-Heimatort
   const outlierOrders = orders.filter(o => o.distFromHome > 60);
@@ -1995,13 +1995,12 @@ async function calcTechRoute(techId) {
     const data = await res.json();
     const routeOrders = data.orders || orders; // Nearest Neighbor sortierte Orders
 
-    // Google Maps URL
+    // Google Maps URL — optimize:true lässt Google die beste Reihenfolge wählen
     const origin = `${tech.home[1]},${tech.home[0]}`;
-    const waypoints = routeOrders.slice(0, -1).map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
-    const last = routeOrders[routeOrders.length - 1];
-    const destination = `${last.coords[1]},${last.coords[0]}`;
+    const allWaypoints = routeOrders.map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
+    const destination = origin; // Rundtour für optimize:true
     let gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-    if (waypoints) gmapsUrl += `&waypoints=${waypoints}`;
+    if (allWaypoints) gmapsUrl += `&waypoints=optimize:true|${allWaypoints}`;
 
     // WhatsApp text
     const whatsText = `🗺️ Route ${tech.name} — ${routeOrders.length} Aufträge, ${data.totalDistance || '?'} km, ca. ${formatDuration(data.totalDuration)}\n\n` +

@@ -116,10 +116,15 @@ module.exports = async (req, res) => {
 
         const trip = osrm.trips[0];
         // waypoints enthält den Index des Original-Inputs und die optimierte Position
-        const waypointOrder = osrm.waypoints
-          .slice(1) // slice(1) = ohne Startpunkt
-          .sort((a, b) => a.waypoint_index - b.waypoint_index)
-          .map(w => w.waypoint_index - 1); // -1 weil Start auf Index 0 war
+        // OSRM waypoints[i].waypoint_index = Position im Trip für Input-Koordinate i
+        // Wir bauen: für jede Trip-Position → welcher Input-Index?
+        const tripPositionToInput = new Array(osrm.waypoints.length);
+        osrm.waypoints.forEach((wp, inputIdx) => {
+          tripPositionToInput[wp.waypoint_index] = inputIdx;
+        });
+        // Position 0 = Startpunkt (tech.home) → überspringen
+        // Positions 1..N = Aufträge → Input-Index minus 1 (weil home auf [0] war)
+        const waypointOrder = tripPositionToInput.slice(1).map(inputIdx => inputIdx - 1);
 
         route = waypointOrder.map(i => outliers[i]);
         totalDistance = Math.round(trip.distance / 100) / 10; // Meter → km
