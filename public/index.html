@@ -2334,15 +2334,21 @@ function renderEmail() {
   ];
 
   let html = `
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
       <div>
         <h2 class="text-lg font-bold text-white">📧 Postfach</h2>
         <div class="text-sm text-slate-400 mt-0.5">${d.total} E-Mails · ${d.unread} ungelesen · ${cacheInfo}</div>
       </div>
-      <button onclick="loadEmails(true)" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
-        🔄 Aktualisieren
-      </button>
-    </div>`;
+      <div class="flex gap-2">
+        <button onclick="showEmailSummary()" class="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors">
+          📋 Tagesreport
+        </button>
+        <button onclick="loadEmails(true)" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
+          🔄 Aktualisieren
+        </button>
+      </div>
+    </div>
+    <div id="email-summary-box" class="hidden mb-4"></div>`;
 
   if (d.errors && d.errors.length > 0) {
     html += `<div class="card p-3 mb-4 border border-orange-800 bg-orange-950/30 text-orange-300 text-sm">
@@ -2399,6 +2405,55 @@ function renderEmailRow(e) {
     </div>
     <div class="flex-shrink-0">${link}</div>
   </div>`;
+}
+
+function showEmailSummary() {
+  if (!EMAIL_DATA) return;
+  const box = document.getElementById('email-summary-box');
+  const d = EMAIL_DATA;
+  const today = new Date().toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'});
+
+  const fmt = (emails) => emails.length === 0
+    ? '  – keine'
+    : emails.slice(0, 8).map(e => `  • ${e.sender || '?'} — ${e.subject || e.raw?.slice(0,60) || '?'}${e.isUnread ? ' 🔵' : ''}`).join('\n');
+
+  const text = `📧 E-Mail Tagesreport — ${today}
+
+🚨 Dringend (${d.byCategory.DRINGEND.length}):
+${fmt(d.byCategory.DRINGEND)}
+
+📦 Aufträge (${d.byCategory.AUFTRAG.length}):
+${fmt(d.byCategory.AUFTRAG)}
+
+💬 Anfragen (${d.byCategory.ANFRAGE.length}):
+${fmt(d.byCategory.ANFRAGE)}
+
+📄 Sonstige (${d.byCategory.SONSTIGE.length}):
+${fmt(d.byCategory.SONSTIGE)}
+
+🔵 = ungelesen | Gesamt: ${d.total} Mails, ${d.unread} ungelesen`;
+
+  box.classList.remove('hidden');
+  box.innerHTML = `
+    <div class="card border border-blue-800 bg-blue-950/30 p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-semibold text-blue-300">📋 Tagesreport für Josh</span>
+        <div class="flex gap-2">
+          <button onclick="copyEmailSummary()" class="px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-xs">📋 Kopieren</button>
+          <button onclick="document.getElementById('email-summary-box').classList.add('hidden')" class="px-2 py-1 bg-slate-700 text-slate-300 rounded text-xs">✕</button>
+        </div>
+      </div>
+      <pre id="email-summary-text" class="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed font-mono bg-slate-900/60 rounded p-3 select-all">${esc(text)}</pre>
+    </div>`;
+  window._emailSummaryText = text;
+}
+
+function copyEmailSummary() {
+  if (!window._emailSummaryText) return;
+  navigator.clipboard.writeText(window._emailSummaryText).then(() => {
+    const btn = document.querySelector('#email-summary-box button');
+    if (btn) { const orig = btn.textContent; btn.textContent = '✅ Kopiert!'; setTimeout(() => btn.textContent = orig, 2000); }
+  });
 }
 
 function toggleEmailCat(key) {
