@@ -1,5 +1,5 @@
 const { getOrders } = require('./_lib/bohwk');
-const { getOpenConversations } = require('./_lib/superchat');
+const { getOpenConversations, getRepliedPhones } = require('./_lib/superchat');
 const { getTodayAppointments, getVictorTasks } = require('./_lib/hero');
 const { analyze } = require('./_lib/analyzer');
 const { getAllContacts } = require('./_lib/contacts');
@@ -102,8 +102,9 @@ module.exports = async (req, res) => {
   const cacheValid = !force && cache.bohwk && (now - cache.at) < CACHE_TTL;
 
   try {
-    // Parallel: Superchat conversations + contacts
+    // Parallel: Superchat conversations + replied phones + contacts
     const superchatPromise = getOpenConversations();
+    const repliedPhonesPromise = getRepliedPhones();
     const contactsPromise = getAllContacts(force);
 
     // B&O + Hero aus Cache oder neu laden
@@ -145,15 +146,17 @@ module.exports = async (req, res) => {
     }
 
     // Superchat-Ergebnisse abwarten
-    let superchat, contacts;
+    let superchat, contacts, repliedPhones;
     try {
-      const [convResult, contactsResult] = await Promise.allSettled([superchatPromise, contactsPromise]);
+      const [convResult, repliedResult, contactsResult] = await Promise.allSettled([superchatPromise, repliedPhonesPromise, contactsPromise]);
       const conversations = convResult.status === 'fulfilled' ? convResult.value : [];
+      repliedPhones = repliedResult.status === 'fulfilled' ? [...repliedResult.value] : [];
       contacts = contactsResult.status === 'fulfilled' ? contactsResult.value : [];
-      superchat = { conversations, lastUpdate: new Date().toISOString(), error: convResult.status === 'rejected' ? convResult.reason?.message : null };
+      superchat = { conversations, repliedPhones, lastUpdate: new Date().toISOString(), error: convResult.status === 'rejected' ? convResult.reason?.message : null };
     } catch (err) {
-      superchat = { conversations: [], lastUpdate: new Date().toISOString(), error: err.message };
+      superchat = { conversations: [], repliedPhones: [], lastUpdate: new Date().toISOString(), error: err.message };
       contacts = [];
+      repliedPhones = [];
     }
 
     // Matching: B&O orders ↔ Superchat contacts

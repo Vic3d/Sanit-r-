@@ -181,6 +181,12 @@ const STATE = {
 async function buildSharedState() {
   if (!DATA?.orders) return;
   const plzCoords = await loadPLZCoords();
+
+  // Build replied-phones Set from Superchat (time_window.state === 'open')
+  const repliedPhones = new Set((DATA.superchat?.repliedPhones || []).map(p =>
+    p.replace(/[\s\-()]/g, '').replace(/^0049/, '+49').replace(/^0(\d)/, '+49$1')
+  ));
+
   // Use ALL orders, but filter out fertiggestellt (4,6,7) + abgerechnet (8,9)
   const allRaw = DATA.orders?.all?.length
     ? DATA.orders.all.filter(o => o.OrderState <= 3)
@@ -226,6 +232,7 @@ async function buildSharedState() {
       age,
       region,
       contacted,
+      replied: allPhones.filter(Boolean).some(p => repliedPhones.has(p)),
       distances,
       coords,
       orderState: o.OrderState,
@@ -581,6 +588,7 @@ function renderOrderCard(o, mode = 'full') {
           ${o.emergency ? '<span class="text-xs font-bold px-1 py-0.5 bg-red-900/50 text-red-400 rounded">⚡</span>' : ''}
           <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
           ${o.contacted ? '<span class="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-400">✅</span>' : '<span class="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">📞</span>'}
+          ${o.replied ? '<span class="text-xs px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 font-medium">💬 Geantwortet</span>' : ''}
           ${o.region === 'nord' ? '<span class="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-300 font-medium">Nord</span>' : o.region === 'ost' ? '<span class="text-xs px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 font-medium">Ost</span>' : ''}
         </div>
         <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}${o.dateStr ? ` · <span class="${ageColor}">📥 ${new Date(o.dateStr).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}${ageText ? ' ('+ageText+')' : ''}</span>` : ''}${o.executionDate && o.executionDate !== '1970-01-01' ? ` · <span class="text-green-400">🔧 ${new Date(o.executionDate).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}</span>` : ''}</div>
@@ -1343,6 +1351,7 @@ function renderOrderList() {
             ${o.emergency ? '<span class="text-red-400 font-bold text-xs px-1 py-0.5 bg-red-900/50 rounded">⚡</span>' : ''}
             <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
             ${o.contacted ? '<span class="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-400">✅</span>' : '<span class="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">📞</span>'}
+            ${o.replied ? '<span class="text-xs px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 font-medium">💬 Geantwortet</span>' : ''}
             ${o.region === 'nord' ? '<span class="text-xs px-1 py-0.5 rounded bg-red-900/50 text-red-300">Nord</span>' : o.region === 'ost' ? '<span class="text-xs px-1 py-0.5 rounded bg-blue-900/50 text-blue-300">Ost</span>' : ''}
           </div>
           <div class="text-xs text-slate-400 mt-0.5">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)} · <span class="${age > 14 ? 'text-amber-400' : 'text-slate-500'}">📥 ${o.dateStr ? new Date(o.dateStr).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) : '?'}${ageText ? ' ('+ageText+')' : ''}</span></div>

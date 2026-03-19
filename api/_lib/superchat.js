@@ -214,4 +214,49 @@ async function getOpenConversations() {
   });
 }
 
-module.exports = { getOpenConversations, invalidateCache, checkAndResetInvalid, updateConversation };
+// ── Replied Phones ────────────────────────────────────────────────
+// Returns a Set of phone numbers (normalized) where time_window.state === 'open'
+// i.e. the customer has replied within the last 24h.
+// No webhooks needed — the 24h window only opens on inbound customer messages.
+async function getRepliedPhones() {
+  const PAGE_SIZE = 100;
+  const repliedContactIds = new Set();
+
+  let url = `/v1.0/conversations?limit=${PAGE_SIZE}`;
+  let pages = 0;
+
+  while (url) {
+    pages++;
+    const { status, data } = await request('GET', url);
+    if (status !== 200 || !data.results) break;
+
+    for (const c of data.results) {
+      if (c.time_window?.state === 'open') {
+        const contactId = c.contacts?.[0]?.id;
+        if (contactId) repliedContactIds.add(contactId);
+      }
+    }
+
+    const nextCursor = data.pagination?.next_cursor;
+    url = nextCursor ? `/v1.0/conversations?limit=${PAGE_SIZE}&after=${nextCursor}` : null;
+    if (pages >= 20) break; // safety: max 2000 conversations
+  }
+
+  if (!repliedContactIds.size) return new Set();
+
+  // Resolve contact IDs → phone numbers
+  const repliedPhones = new Set();
+  await Promise.all([...repliedContactIds].map(async (contactId) => {
+    const contact = await getContact(contactId);
+    const phone = contact?.handles?.find(h => h.type === 'phone')?.value;
+    if (phone) {
+      // Normalize: strip spaces/dashes, ensure +49 format
+      const norm = phone.replace(/[\s\-()]/g, '');
+      repliedPhones.add(norm);
+    }
+  }));
+
+  return repliedPhones;
+}
+
+module.exports = { getOpenConversations, getRepliedPhones, invalidateCache, checkAndResetInvalid, updateConversation };
