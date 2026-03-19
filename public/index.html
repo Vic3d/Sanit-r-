@@ -1415,87 +1415,121 @@ async function optimizeSelectedRoute() {
   }
 }
 
+function buildGmapsUrl(tech, orders) {
+  // Origin + Destination = Heimatort → Rundtour
+  const home = `${tech.home[1]},${tech.home[0]}`;
+  const stops = orders.map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
+  let url = `https://www.google.com/maps/dir/?api=1&origin=${home}&destination=${home}&travelmode=driving`;
+  if (stops) url += `&waypoints=optimize:true|${stops}`;
+  return url;
+}
+
 function renderRouteResult(data) {
   const result = document.getElementById('route-result');
   const tech = data.tech;
   const orders = data.orders || [];
-  if (!orders.length) {
+  const outliers = data.outliers || [];
+
+  if (!orders.length && !outliers.length) {
     result.innerHTML = '<div class="card p-4 text-center text-slate-500">Keine Route berechnet</div>';
     return;
   }
 
-  // Google Maps URL: start → alle Stops (optimize:true = Google optimiert Reihenfolge selbst)
-  const origin = `${tech.home[1]},${tech.home[0]}`;
-  // Alle Stops als Waypoints übergeben — optimize:true lässt Google die beste Reihenfolge wählen
-  const allStopCoords = orders.map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
-  const destination = origin; // zurück zum Start (Rundtour) damit Google optimize:true nutzen kann
-  let gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-  if (allStopCoords) gmapsUrl += `&waypoints=optimize:true|${allStopCoords}`;
+  const gmapsUrl = buildGmapsUrl(tech, orders);
 
-  // Ausreißer-Warnung: Aufträge >60km Luftlinie vom Techniker-Heimatort
-  const outlierOrders = orders.filter(o => o.distFromHome > 60);
-  const outlierHtml = outlierOrders.length ? `
-    <div class="mx-4 mt-3 p-3 bg-amber-900/30 border border-amber-700/40 rounded-lg text-xs text-amber-300">
-      ⚠️ <strong>${outlierOrders.length} Ausreißer</strong> (>60 km vom Heimatort):
-      ${outlierOrders.map(o => `<span class="font-medium">${esc(o.zipcode)} ${esc(o.city)}</span> (${o.distFromHome} km)`).join(', ')}
-      — besser anderem Techniker zuordnen?
-    </div>` : '';
+  // ── Ausreißer-Panel (automatisch herausgefiltert) ─────────────
+  let outlierHtml = '';
+  if (outliers.length) {
+    const rows = outliers.map(o => {
+      const bt = o.betterTech;
+      return `<div class="flex items-center justify-between py-2 border-b border-slate-700/50 last:border-0">
+        <div>
+          <span class="text-white text-sm font-medium">${esc(o.renter)}</span>
+          <span class="text-xs text-slate-400 ml-2">${esc(o.zipcode)} ${esc(o.city)}</span>
+          <span class="text-xs px-1.5 py-0.5 ml-1 rounded bg-red-900/50 text-red-300">${o.distFromHome} km</span>
+        </div>
+        <div class="text-xs text-slate-400 text-right">
+          ${bt ? `→ besser: <span class="text-white font-medium">${esc(bt.name)}</span> (${bt.dist} km)` : ''}
+          <button onclick="includeOutlier('${esc(o.id)}')" class="ml-2 px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-xs">+ einschließen</button>
+        </div>
+      </div>`;
+    }).join('');
+    outlierHtml = `<div class="card p-4 mb-3 border-amber-700/40" style="border-left:4px solid #d97706">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="text-amber-400 font-bold text-sm">⚠️ ${outliers.length} Ausreißer — nicht in Route</span>
+        <span class="text-xs text-slate-400">(>${50} km vom Heimatort, anderen Techniker/Tag zuordnen)</span>
+      </div>
+      ${rows}
+    </div>`;
+  }
 
   const sourceHint = data.source === 'osrm'
     ? '<span class="text-xs text-green-400">✓ Echte Straßenroute (OSRM)</span>'
-    : '<span class="text-xs text-amber-400">⚠ Luftlinien-Schätzung (OSRM nicht verfügbar)</span>';
+    : '<span class="text-xs text-amber-400">⚠ Luftlinien-Schätzung</span>';
 
-  let html = `<div class="card overflow-hidden" style="border-left: 4px solid ${tech.color}">
-    <div class="p-4 border-b border-dark-border flex items-center justify-between flex-wrap gap-3">
-      <div>
-        <div class="text-white font-bold text-lg" style="color:${tech.color}">📋 Route: ${esc(tech.name)}</div>
-        <div class="text-sm text-slate-400">${orders.length} Aufträge · ${data.totalDistance} km · ${formatDuration(data.totalDuration)}</div>
-        <div class="mt-0.5">${sourceHint}</div>
+  let html = outlierHtml;
+
+  if (orders.length) {
+    html += `<div class="card overflow-hidden" style="border-left: 4px solid ${tech.color}">
+      <div class="p-4 border-b border-dark-border flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <div class="text-white font-bold text-lg" style="color:${tech.color}">📋 Route: ${esc(tech.name)}</div>
+          <div class="text-sm text-slate-400">${orders.length} Stops · ${data.totalDistance} km · ${formatDuration(data.totalDuration)} · 🏠 Heimrückkehr</div>
+          <div class="mt-0.5">${sourceHint}</div>
+        </div>
+        <div class="flex gap-2 flex-wrap">
+          <a href="${gmapsUrl}" target="_blank" rel="noopener"
+            class="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+            📍 Google Maps öffnen
+          </a>
+          <button onclick="copyRouteText()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+            📋 Kopieren
+          </button>
+          <button onclick="shareWhatsApp()" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+            💬 WhatsApp
+          </button>
+        </div>
       </div>
-      <div class="flex gap-2">
-        <a href="${gmapsUrl}" target="_blank" rel="noopener"
-          class="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
-          📍 In Google Maps öffnen
-        </a>
-        <button onclick="copyRouteText()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
-          📋 Kopieren
-        </button>
-        <button onclick="shareWhatsApp()" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
-          💬 WhatsApp
-        </button>
-      </div>
-    </div>
-    ${outlierHtml}
-    <div class="divide-y divide-dark-border/50">`;
+      <div class="divide-y divide-dark-border/50">
+        <div class="px-4 py-2 flex items-center gap-2 text-xs text-slate-500 bg-slate-800/50">
+          <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs bg-slate-700">🏠</span>
+          <span>${esc(tech.city)} (Startpunkt)</span>
+        </div>`;
 
-  orders.forEach((o, idx) => {
-    const dateText = o.dateStr ? new Date(o.dateStr).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'}) : '';
-    const ageText = o.age !== undefined && o.age !== null ? (o.age === 0 ? 'heute' : o.age === 1 ? 'gestern' : `vor ${o.age} Tagen`) : '';
-    const ageColor = o.age > 14 ? 'text-amber-400' : 'text-slate-500';
-
-    html += `<div class="p-3">
-      <div class="flex items-start gap-3">
-        <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style="background:${tech.color}">${idx + 1}</div>
-        <div class="flex-1">
-          <div class="flex items-center gap-2">
-            <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
-            ${o.emergency ? '<span class="text-red-400 text-xs font-bold">⚡</span>' : ''}
-            ${o.distFromHome > 60 ? `<span class="text-xs px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300">📍 ${o.distFromHome} km</span>` : ''}
-            ${dateText ? `<span class="text-xs ${ageColor}">📅 ${dateText}${ageText ? ' (' + ageText + ')' : ''}</span>` : ''}
+    orders.forEach((o, idx) => {
+      const dateText = o.dateStr ? new Date(o.dateStr).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit'}) : '';
+      const ageText = o.age > 0 ? (o.age === 1 ? 'gestern' : `+${o.age}d`) : '';
+      const ageColor = o.age > 14 ? 'text-amber-400' : 'text-slate-500';
+      html += `<div class="p-3">
+        <div class="flex items-start gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white" style="background:${tech.color}">${idx + 1}</div>
+          <div class="flex-1">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
+              ${o.emergency ? '<span class="text-red-400 text-xs font-bold">⚡</span>' : ''}
+              ${dateText ? `<span class="text-xs ${ageColor}">${dateText}${ageText ? ' ('+ageText+')' : ''}</span>` : ''}
+              <button onclick="removeRouteStop('${esc(o.id)}')" class="ml-auto text-xs text-slate-600 hover:text-red-400 transition-colors" title="Stop entfernen">✕</button>
+            </div>
+            <div class="text-xs text-slate-400">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
+            <div class="text-xs text-slate-500">${esc(o.craft || '')}${o.telephone ? ' · <a href="tel:'+esc(o.telephone.replace(/[^\\d+]/g,''))+'" class="text-blue-400">'+esc(o.telephone)+'</a>' : ''}</div>
           </div>
-          <div class="text-xs text-slate-400">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
-          <div class="text-xs text-slate-500">${esc(o.craft || '')}${o.damage ? ' — ' + esc(o.damage.substring(0,60)) : o.disturbanceType ? ' — ' + esc(o.disturbanceType) : ''}${o.telephone ? ' · <a href="tel:'+esc(o.telephone.replace(/[^\\d+]/g,''))+'" class="text-blue-400">'+esc(o.telephone)+'</a>' : ''}</div>
+        </div>
+      </div>`;
+    });
+
+    html += `<div class="px-4 py-2 flex items-center gap-2 text-xs text-slate-500 bg-slate-800/50">
+          <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs bg-slate-700">🏠</span>
+          <span>${esc(tech.city)} (Heimkehr)</span>
         </div>
       </div>
     </div>`;
-  });
+  }
 
-  html += '</div></div>';
-
-  // Store for copy (WhatsApp-friendly format)
-  window._lastRouteText = `🗺️ Route ${tech.name} — ${orders.length} Aufträge, ${data.totalDistance} km, ca. ${formatDuration(data.totalDuration)}\n\n` +
+  // Store for copy/WhatsApp
+  window._lastRouteText = `🗺️ Route ${tech.name} — ${orders.length} Stops, ${data.totalDistance} km, ca. ${formatDuration(data.totalDuration)}\n\n` +
+    `🏠 Start: ${tech.city}\n\n` +
     orders.map((o, i) => `${i+1}. *${o.renter}*\n   📍 ${o.street}, ${o.zipcode} ${o.city}${o.telephone ? '\n   📞 ' + o.telephone : ''}${o.craft ? '\n   🔧 ' + o.craft : ''}`).join('\n\n') +
-    `\n\n📍 Google Maps:\n${gmapsUrl}`;
+    `\n\n🏠 Zurück: ${tech.city}\n\n📍 Google Maps:\n${gmapsUrl}`;
   window._lastRouteGmaps = gmapsUrl;
 
   result.innerHTML = html;
@@ -1534,6 +1568,24 @@ function renderRouteResult(data) {
   });
 
   routeMap.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
+}
+
+function removeRouteStop(orderId) {
+  if (!lastRouteResult) return;
+  lastRouteResult.orders = lastRouteResult.orders.filter(o => o.id !== orderId);
+  // Add to outliers so it shows in the panel
+  const removed = routeAllOrders?.find(o => o.id === orderId);
+  if (removed && lastRouteResult.outliers) lastRouteResult.outliers.push({ ...removed, distFromHome: removed.distFromHome || 0, isOutlier: true });
+  renderRouteResult(lastRouteResult);
+}
+
+function includeOutlier(orderId) {
+  if (!lastRouteResult) return;
+  const o = lastRouteResult.outliers?.find(x => x.id === orderId);
+  if (!o) return;
+  lastRouteResult.outliers = lastRouteResult.outliers.filter(x => x.id !== orderId);
+  lastRouteResult.orders.push(o);
+  renderRouteResult(lastRouteResult);
 }
 
 function copyRouteText() {
