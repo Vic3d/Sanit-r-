@@ -1432,11 +1432,25 @@ function renderRouteResult(data) {
   let gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
   if (waypoints) gmapsUrl += `&waypoints=${waypoints}`;
 
+  // Ausreißer-Warnung: Aufträge >60km Luftlinie vom Techniker-Heimatort
+  const outlierOrders = orders.filter(o => o.distFromHome > 60);
+  const outlierHtml = outlierOrders.length ? `
+    <div class="mx-4 mt-3 p-3 bg-amber-900/30 border border-amber-700/40 rounded-lg text-xs text-amber-300">
+      ⚠️ <strong>${outlierOrders.length} Ausreißer</strong> (>60 km vom Heimatort):
+      ${outlierOrders.map(o => `<span class="font-medium">${esc(o.zipcode)} ${esc(o.city)}</span> (${o.distFromHome} km)`).join(', ')}
+      — besser anderem Techniker zuordnen?
+    </div>` : '';
+
+  const sourceHint = data.source === 'osrm'
+    ? '<span class="text-xs text-green-400">✓ Echte Straßenroute (OSRM)</span>'
+    : '<span class="text-xs text-amber-400">⚠ Luftlinien-Schätzung (OSRM nicht verfügbar)</span>';
+
   let html = `<div class="card overflow-hidden" style="border-left: 4px solid ${tech.color}">
     <div class="p-4 border-b border-dark-border flex items-center justify-between flex-wrap gap-3">
       <div>
         <div class="text-white font-bold text-lg" style="color:${tech.color}">📋 Route: ${esc(tech.name)}</div>
         <div class="text-sm text-slate-400">${orders.length} Aufträge · ${data.totalDistance} km · ${formatDuration(data.totalDuration)}</div>
+        <div class="mt-0.5">${sourceHint}</div>
       </div>
       <div class="flex gap-2">
         <a href="${gmapsUrl}" target="_blank" rel="noopener"
@@ -1451,6 +1465,7 @@ function renderRouteResult(data) {
         </button>
       </div>
     </div>
+    ${outlierHtml}
     <div class="divide-y divide-dark-border/50">`;
 
   orders.forEach((o, idx) => {
@@ -1465,6 +1480,7 @@ function renderRouteResult(data) {
           <div class="flex items-center gap-2">
             <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
             ${o.emergency ? '<span class="text-red-400 text-xs font-bold">⚡</span>' : ''}
+            ${o.distFromHome > 60 ? `<span class="text-xs px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-300">📍 ${o.distFromHome} km</span>` : ''}
             ${dateText ? `<span class="text-xs ${ageColor}">📅 ${dateText}${ageText ? ' (' + ageText + ')' : ''}</span>` : ''}
           </div>
           <div class="text-xs text-slate-400">${esc(o.street)}, ${esc(o.zipcode)} ${esc(o.city)}</div>
