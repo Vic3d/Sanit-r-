@@ -167,11 +167,14 @@ module.exports = async (req, res) => {
         coords: geocodedCoords[i] || o.coords, // Real coords überschreiben PLZ-Zentrum
       }));
 
-      // ── SCHRITT 2: Notfälle priorisieren ───────────────────────────────────
-      // Notfall-Aufträge kommen zuerst in den OSRM-Input → werden als erste Stops geplant
-      const emergencies = orders.filter(o => o.emergency && o.coords);
-      const normals     = orders.filter(o => !o.emergency && o.coords);
-      orders = [...emergencies, ...normals];
+      // ── SCHRITT 2: Notfälle separieren ─────────────────────────────────────
+      // OSRM/ORS optimiert rein auf Distanz — ignoriert emergency flag.
+      // Lösung: Notfälle komplett aus dem Optimierungspool rausnehmen,
+      // nach Optimierung manuell an den Anfang der Route setzen.
+      const emergencyOrders = orders.filter(o => o.emergency && o.coords);
+      const normalOrders    = orders.filter(o => !o.emergency && o.coords);
+      // Für Optimierung nur normale Aufträge verwenden
+      orders = normalOrders;
 
       // ── SCHRITT 3: Ausreißer-Erkennung (>50km Luftlinie vom Heimatort) ─────
       const OUTLIER_KM = 50;
@@ -184,6 +187,13 @@ module.exports = async (req, res) => {
           isOutlier: distFromHome > OUTLIER_KM,
           betterTech: betterTech ? { id: betterTech.id, name: betterTech.name, dist: betterDist } : null,
         };
+      });
+
+      // Notfälle ebenfalls enrichen (für Outlier-Check) aber separat halten
+      const enrichedEmergencies = emergencyOrders.map(o => {
+        const distFromHome = Math.round(haversine(tech.home[0], tech.home[1], o.coords[0], o.coords[1]));
+        const { tech: betterTech, dist: betterDist } = bestTechForOrder(o, TECHNICIANS.filter(t => t.id !== tech.id));
+        return { ...o, distFromHome, isOutlier: false, betterTech: betterTech ? { id: betterTech.id, name: betterTech.name, dist: betterDist } : null };
       });
 
       const outliers    = enriched.filter(o => o.isOutlier);
@@ -255,15 +265,21 @@ module.exports = async (req, res) => {
         routeGeometry = null;
       }
 
+      // ── Notfälle vorne anfügen ─────────────────────────────────────────────
+      // enrichedEmergencies immer an Position 1-N, Rest danach
+      const finalRoute = [...enrichedEmergencies, ...route];
+
+      const { cacheSize, requestCount } = require('./_lib/geocoder');
       return res.json({
         tech:          { id: tech.id, name: tech.name, home: tech.home, color: tech.color, city: tech.city },
-        orders:        route,
+        orders:        finalRoute,
         outliers,
         totalDistance,
         totalDuration,
         routeGeometry,
         source,
-        geocoderStats: { cacheSize: require('./_lib/geocoder').cacheSize() },
+        emergencyCount: enrichedEmergencies.length,
+        geocoderStats:  { cacheSize: cacheSize(), requests: requestCount() },
       });
     }
 
