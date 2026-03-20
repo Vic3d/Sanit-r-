@@ -103,11 +103,24 @@ module.exports = async (req, res) => {
       const allOrders = (body.orders || []).filter(o => o.coords);
       if (!allOrders.length) return res.json({ tech, orders: [], outliers: [], totalDistance: 0, totalDuration: 0 });
 
+      // Pipeline-Filter: nur terminierte Aufträge
+      let pipelineStatus = {};
+      try { pipelineStatus = require('../data/pipeline-status.json'); } catch {}
+      let orders = allOrders;
+      if (Object.keys(pipelineStatus).length > 0) {
+        orders = orders.filter(o => pipelineStatus[o.id] === 'terminiert');
+      }
+      // Wenn keine terminierten → alle nehmen (Fallback für leere Pipeline)
+      if (orders.length === 0 && Object.keys(pipelineStatus).length === 0) {
+        // Kein Filter wenn Pipeline noch leer ist
+        orders = allOrders;
+      }
+
       // ── Ausreißer-Erkennung ──────────────────────────────────────
       // Schwellenwert: >50km Luftlinie vom Heimatort des Technikers
       const OUTLIER_KM = 50;
 
-      const enriched = allOrders.map(o => {
+      const enriched = orders.map(o => {
         const distFromHome = Math.round(haversine(tech.home[0], tech.home[1], o.coords[0], o.coords[1]));
         const { tech: betterTech, dist: betterDist } = bestTechForOrder(o, TECHNICIANS.filter(t => t.id !== tech.id));
         return {

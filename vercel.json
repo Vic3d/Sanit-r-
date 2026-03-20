@@ -5,6 +5,8 @@
     { "source": "/api/accept", "destination": "/api/accept" },
     { "source": "/api/routes", "destination": "/api/routes" },
     { "source": "/api/email", "destination": "/api/email" },
+    { "source": "/api/pipeline", "destination": "/api/pipeline" },
+    { "source": "/api/auth", "destination": "/api/auth" },
     { "source": "/api/webhook/superchat", "destination": "/api/webhook/superchat" },
     { "source": "/(.*)", "destination": "/public/index.html" }
   ],
@@ -13,6 +15,8 @@
     "api/accept.js":  { "maxDuration": 20 },
     "api/routes.js":  { "maxDuration": 60 },
     "api/email.js":   { "maxDuration": 30 },
+    "api/pipeline.js": { "maxDuration": 20 },
+    "api/auth.js":    { "maxDuration": 10 },
     "api/webhook/superchat.js": { "maxDuration": 10 }
   }
 }
