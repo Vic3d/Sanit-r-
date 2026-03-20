@@ -107,12 +107,13 @@
   <nav id="top-nav">
     <span class="nav-logo">🔧 <span>Schutzeichel</span></span>
     <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-tab active"><span class="tab-emoji">🏠</span><span class="tab-label">Start</span></button>
-    <button onclick="switchTab('orders')" id="tab-orders" class="nav-tab inactive"><span class="tab-emoji">📋</span><span class="tab-label">Aufträge</span></button>
-    <button onclick="switchTab('planner')" id="tab-planner" class="nav-tab inactive"><span class="tab-emoji">📅</span><span class="tab-label">Planen</span></button>
+    <button onclick="switchTab('neu')" id="tab-neu" class="nav-tab inactive" style="position:relative"><span class="tab-emoji">🆕</span><span class="tab-label">Neu</span><span id="badge-neu" class="hidden" style="position:absolute;top:4px;right:2px;background:#dc2626;color:#fff;font-size:9px;border-radius:9999px;padding:0 4px;line-height:15px;min-width:15px;text-align:center"></span></button>
+    <button onclick="switchTab('kontakt')" id="tab-kontakt" class="nav-tab inactive" style="position:relative"><span class="tab-emoji">📞</span><span class="tab-label">Kontakt</span><span id="badge-kontakt" class="hidden" style="position:absolute;top:4px;right:2px;background:#f59e0b;color:#000;font-size:9px;border-radius:9999px;padding:0 4px;line-height:15px;min-width:15px;text-align:center"></span></button>
+    <button onclick="switchTab('termin')" id="tab-termin" class="nav-tab inactive" style="position:relative"><span class="tab-emoji">📅</span><span class="tab-label">Termin</span><span id="badge-termin" class="hidden" style="position:absolute;top:4px;right:2px;background:#3b82f6;color:#fff;font-size:9px;border-radius:9999px;padding:0 4px;line-height:15px;min-width:15px;text-align:center"></span></button>
+    <button onclick="switchTab('einsatz')" id="tab-einsatz" class="nav-tab inactive" style="position:relative"><span class="tab-emoji">🔧</span><span class="tab-label">Einsatz</span><span id="badge-einsatz" class="hidden" style="position:absolute;top:4px;right:2px;background:#8b5cf6;color:#fff;font-size:9px;border-radius:9999px;padding:0 4px;line-height:15px;min-width:15px;text-align:center"></span></button>
+    <button onclick="switchTab('rechnung')" id="tab-rechnung" class="nav-tab inactive" style="position:relative"><span class="tab-emoji">💶</span><span class="tab-label">Rechnung</span><span id="badge-rechnung" class="hidden" style="position:absolute;top:4px;right:2px;background:#dc2626;color:#fff;font-size:9px;border-radius:9999px;padding:0 4px;line-height:15px;min-width:15px;text-align:center"></span></button>
     <button onclick="switchTab('routes')" id="tab-routes" class="nav-tab inactive"><span class="tab-emoji">🗺️</span><span class="tab-label">Route</span></button>
-    <button onclick="switchTab('calendar')" id="tab-calendar" class="nav-tab inactive"><span class="tab-emoji">📆</span><span class="tab-label">Kalender</span></button>
     <button onclick="switchTab('email');loadEmails()" id="tab-email" class="nav-tab inactive" style="position:relative"><span class="tab-emoji">📧</span><span class="tab-label">E-Mail</span><span id="email-badge" class="hidden" style="position:absolute;top:4px;right:4px;background:#dc2626;color:#fff;font-size:10px;border-radius:9999px;padding:0 4px;line-height:16px;"></span></button>
-    <button onclick="switchTab('pipeline')" id="tab-pipeline" class="nav-tab inactive"><span class="tab-emoji">📊</span><span class="tab-label">Pipeline</span></button>
     <div class="nav-right">
       <span id="nav-date"></span>
       <button id="refreshBtn" onclick="loadData(true)" title="Daten aktualisieren">🔄</button>
@@ -136,13 +137,19 @@
 
     <!-- Tab Content -->
     <div id="content-dashboard"></div>
+    <div id="content-neu" class="hidden"></div>
+    <div id="content-kontakt" class="hidden"></div>
+    <div id="content-termin" class="hidden"></div>
+    <div id="content-einsatz" class="hidden"></div>
+    <div id="content-rechnung" class="hidden"></div>
+    <div id="content-routes" class="hidden"></div>
+    <div id="content-email" class="hidden"></div>
+    <!-- Legacy (hidden, kept for internal use) -->
     <div id="content-orders" class="hidden"></div>
     <div id="content-contact" class="hidden"></div>
     <div id="content-planner" class="hidden"></div>
-    <div id="content-routes" class="hidden"></div>
     <div id="content-techs" class="hidden"></div>
     <div id="content-calendar" class="hidden"></div>
-    <div id="content-email" class="hidden"></div>
     <div id="content-pipeline" class="hidden"></div>
 
     <!-- Hidden stat elements (keep for backward compat) -->
@@ -257,8 +264,9 @@ async function buildSharedState() {
   }
 
   STATE.ready = true;
-  // TRA-210: Update status bar immediately after state is ready
+  // TRA-210: Update status bar + lifecycle badges immediately after state is ready
   if (typeof updateStatusBar === 'function') updateStatusBar();
+  if (typeof updateLifecycleBadges === 'function') updateLifecycleBadges();
 }
 
 // Get assignment for an order: returns tech or null
@@ -383,13 +391,12 @@ function updateStatusBar() {
 // ═══════════════════════════════════════════════════════════════
 function switchTab(tab) {
   currentTab = tab;
-  ['dashboard', 'orders', 'contact', 'routes', 'planner', 'techs', 'calendar', 'email', 'pipeline'].forEach(t => {
+  const allTabs = ['dashboard','neu','kontakt','termin','einsatz','rechnung','routes','email','orders','contact','planner','techs','calendar','pipeline'];
+  allTabs.forEach(t => {
     const el = document.getElementById('content-' + t);
     if (el) el.classList.toggle('hidden', t !== tab);
     const tabBtn = document.getElementById('tab-' + t);
-    if (tabBtn) {
-      tabBtn.className = t === tab ? 'nav-tab active' : 'nav-tab inactive';
-    }
+    if (tabBtn) tabBtn.className = t === tab ? 'nav-tab active' : 'nav-tab inactive';
   });
   renderCurrentTab();
 }
@@ -397,17 +404,165 @@ function switchTab(tab) {
 function renderCurrentTab() {
   if (!DATA) return;
   switch (currentTab) {
-    case 'dashboard': renderDashboard(); break;
-    case 'orders': renderOrders(); break;
-    // TRA-209: contact tab has no nav button — accessible only via code
-    case 'contact': renderContact(); break;
-    case 'routes': renderRoutes(); break;
-    case 'planner': renderPlanner(); break;
-    case 'techs': renderTechs(); break;
-    case 'calendar': renderCalendar(); break;
-    case 'email': renderEmail(); break;
-    case 'pipeline': renderPipeline(); break;
+    case 'dashboard':  renderDashboard(); break;
+    case 'neu':        renderLifecycleNeu(); break;
+    case 'kontakt':    renderLifecycleKontakt(); break;
+    case 'termin':     renderLifecycleTermin(); break;
+    case 'einsatz':    renderLifecycleEinsatz(); break;
+    case 'rechnung':   renderLifecycleRechnung(); break;
+    case 'routes':     renderRoutes(); break;
+    case 'email':      renderEmail(); break;
+    // Legacy (accessible via dashFilter or code)
+    case 'orders':     renderOrders(); break;
+    case 'contact':    renderContact(); break;
+    case 'planner':    renderPlanner(); break;
+    case 'techs':      renderTechs(); break;
+    case 'calendar':   renderCalendar(); break;
+    case 'pipeline':   renderPipeline(); break;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LIFECYCLE NAV BADGES — live counts in nav buttons
+// ═══════════════════════════════════════════════════════════════
+function updateLifecycleBadges() {
+  if (!STATE.ready) return;
+  const orders = STATE.orders;
+  const heroStats = DATA?.heroStats || {};
+
+  const neuCount = orders.filter(o => !o.contacted && !o.heroJob).length;
+  const kontaktCount = orders.filter(o => o.contacted && (!o.heroJob || o.heroJob.status === 'Offen')).length;
+  const terminCount = orders.filter(o => o.heroJob && ['Offen','Zugewiesen'].includes(o.heroJob.status)).length;
+  const einsatzCount = orders.filter(o => o.heroJob && o.heroJob.status === 'Zugewiesen').length;
+  const rechnungCount = heroStats.invoicePending || 0;
+
+  const setBadge = (id, count) => {
+    const el = document.getElementById('badge-' + id);
+    if (!el) return;
+    if (count > 0) { el.textContent = count > 99 ? '99+' : count; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+  };
+  setBadge('neu', neuCount);
+  setBadge('kontakt', kontaktCount);
+  setBadge('termin', terminCount);
+  setBadge('einsatz', einsatzCount);
+  setBadge('rechnung', rechnungCount);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LIFECYCLE STAGES
+// ═══════════════════════════════════════════════════════════════
+
+function lifecycleHeader(emoji, title, subtitle, color) {
+  return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #1e293b">
+    <span style="font-size:1.75rem">${emoji}</span>
+    <div>
+      <h2 style="color:#f1f5f9;font-size:1rem;font-weight:700;margin:0">${title}</h2>
+      <p style="color:#64748b;font-size:12px;margin:0">${subtitle}</p>
+    </div>
+  </div>`;
+}
+
+// Stage 1: NEU — nicht kontaktiert, kein Hero-Job
+function renderLifecycleNeu() {
+  const container = document.getElementById('content-neu');
+  if (!STATE.ready) { container.innerHTML = '<div class="card p-8 text-center text-slate-400">Laden…</div>'; return; }
+  const orders = STATE.orders.filter(o => !o.contacted && !o.heroJob && matchesGlobalSearch(o));
+  orders.sort((a,b) => { if (a.emergency && !b.emergency) return -1; if (!a.emergency && b.emergency) return 1; return (b.dateStr||'').localeCompare(a.dateStr||''); });
+  let html = lifecycleHeader('🆕','Neu — Noch nicht angeschrieben',`${orders.length} Aufträge warten auf ersten Kontakt`,'#dc2626');
+  if (!orders.length) { html += '<div class="card p-8 text-center text-green-400">✅ Alle Aufträge wurden bereits angeschrieben</div>'; }
+  else { html += '<div class="grid gap-2">'; orders.forEach(o => { html += renderOrderCard(o,'full'); }); html += '</div>'; }
+  container.innerHTML = html;
+}
+
+// Stage 2: KONTAKT — angeschrieben, wartet auf Hero-Job
+function renderLifecycleKontakt() {
+  const container = document.getElementById('content-kontakt');
+  if (!STATE.ready) { container.innerHTML = '<div class="card p-8 text-center text-slate-400">Laden…</div>'; return; }
+  const orders = STATE.orders.filter(o => o.contacted && (!o.heroJob || o.heroJob.status === 'Offen') && matchesGlobalSearch(o));
+  orders.sort((a,b) => (b.dateStr||'').localeCompare(a.dateStr||''));
+  let html = lifecycleHeader('📞','Kontaktiert — Warten auf Termin',`${orders.length} Aufträge — Kunde angeschrieben, Termin noch offen`,'#f59e0b');
+  if (!orders.length) { html += '<div class="card p-8 text-center text-slate-400">Keine offenen Aufträge in dieser Phase</div>'; }
+  else { html += '<div class="grid gap-2">'; orders.forEach(o => { html += renderOrderCard(o,'full'); }); html += '</div>'; }
+  container.innerHTML = html;
+}
+
+// Stage 3: TERMIN — Hero-Job geplant (Zugewiesen)
+function renderLifecycleTermin() {
+  const container = document.getElementById('content-termin');
+  if (!STATE.ready) { container.innerHTML = '<div class="card p-8 text-center text-slate-400">Laden…</div>'; return; }
+  const orders = STATE.orders.filter(o => o.heroJob && ['Offen','Zugewiesen'].includes(o.heroJob.status) && matchesGlobalSearch(o));
+  orders.sort((a,b) => (a.heroJob?.start||'').localeCompare(b.heroJob?.start||''));
+  let html = lifecycleHeader('📅','Termin — Hero-Einsatz geplant',`${orders.length} Aufträge mit geplantem Hero-Einsatz`,'#3b82f6');
+  if (!orders.length) { html += '<div class="card p-8 text-center text-slate-400">Keine geplanten Einsätze</div>'; }
+  else {
+    html += '<div class="grid gap-2">';
+    orders.forEach(o => {
+      const jobStart = o.heroJob?.start ? new Date(o.heroJob.start).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '–';
+      html += renderOrderCard(o,'full');
+    });
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+// Stage 4: EINSATZ — Monteur zugewiesen, aktiver Einsatz
+function renderLifecycleEinsatz() {
+  const container = document.getElementById('content-einsatz');
+  if (!STATE.ready) { container.innerHTML = '<div class="card p-8 text-center text-slate-400">Laden…</div>'; return; }
+  const orders = STATE.orders.filter(o => o.heroJob && o.heroJob.status === 'Zugewiesen' && matchesGlobalSearch(o));
+  orders.sort((a,b) => (a.heroJob?.start||'').localeCompare(b.heroJob?.start||''));
+  // Also show raw Hero jobs without matched B&O order (direct Hero jobs)
+  const openJobs = (DATA?.heroStats?.openJobs || []).filter(j => j.status === 'Zugewiesen');
+  let html = lifecycleHeader('🔧','Im Einsatz — Monteur zugewiesen',`${orders.length} Aufträge + ${openJobs.length} Hero-Direktjobs`,'#8b5cf6');
+  if (!orders.length && !openJobs.length) { html += '<div class="card p-8 text-center text-slate-400">Keine aktiven Einsätze</div>'; }
+  else {
+    if (orders.length) { html += '<h3 style="color:#94a3b8;font-size:12px;font-weight:600;margin-bottom:8px">B&O-VERKNÜPFTE AUFTRÄGE</h3><div class="grid gap-2">'; orders.forEach(o => { html += renderOrderCard(o,'full'); }); html += '</div>'; }
+    if (openJobs.length) {
+      html += `<h3 style="color:#94a3b8;font-size:12px;font-weight:600;margin:16px 0 8px">HERO-DIREKTJOBS</h3><div class="grid gap-2">`;
+      openJobs.forEach(j => {
+        const start = j.start ? new Date(j.start).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '–';
+        html += `<div class="card p-3" style="border-left:3px solid #8b5cf6">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div><div style="color:#f1f5f9;font-weight:600;font-size:13px">${esc(j.title||'Einsatz')}</div>
+            <div style="color:#64748b;font-size:12px">📅 ${start} · ${esc(j.description||'')}</div></div>
+            <span style="background:#8b5cf622;color:#a78bfa;border:1px solid #8b5cf644;border-radius:4px;padding:1px 6px;font-size:11px">🔧 ${j.status}</span>
+          </div></div>`;
+      });
+      html += '</div>';
+    }
+  }
+  container.innerHTML = html;
+}
+
+// Stage 5: RECHNUNG — Hero-Job fertig, Rechnung ausstehend
+function renderLifecycleRechnung() {
+  const container = document.getElementById('content-rechnung');
+  if (!STATE.ready) { container.innerHTML = '<div class="card p-8 text-center text-slate-400">Laden…</div>'; return; }
+  const orders = STATE.orders.filter(o => o.heroJob && o.heroJob.status === 'Rechnung' && matchesGlobalSearch(o));
+  const rechnungJobs = (DATA?.heroStats?.openJobs || []).filter(j => j.status === 'Rechnung');
+  let html = lifecycleHeader('💶','Rechnung ausstehend',`${Math.max(orders.length, rechnungJobs.length)} Einsätze müssen in Hero abgerechnet werden`,'#dc2626');
+  html += `<div style="background:#dc262622;border:1px solid #dc2626;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#fca5a5;font-size:13px">
+    💶 Diese Einsätze sind abgeschlossen — bitte in Hero die Rechnung erstellen!
+  </div>`;
+  if (!orders.length && !rechnungJobs.length) { html += '<div class="card p-8 text-center text-green-400">✅ Keine ausstehenden Rechnungen</div>'; }
+  else {
+    if (orders.length) { html += '<div class="grid gap-2">'; orders.forEach(o => { html += renderOrderCard(o,'full'); }); html += '</div>'; }
+    if (rechnungJobs.length) {
+      html += `<div class="grid gap-2 mt-2">`;
+      rechnungJobs.forEach(j => {
+        const start = j.start ? new Date(j.start).toLocaleString('de-DE',{day:'2-digit',month:'2-digit'}) : '–';
+        html += `<div class="card p-3" style="border-left:3px solid #dc2626">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><div style="color:#f1f5f9;font-weight:600;font-size:13px">${esc(j.title||'Einsatz')}</div>
+            <div style="color:#64748b;font-size:12px">📅 Einsatz: ${start}</div></div>
+            <span style="background:#dc262622;color:#fca5a5;border:1px solid #dc262644;border-radius:4px;padding:1px 8px;font-size:11px;font-weight:600">💶 Rechnung</span>
+          </div></div>`;
+      });
+      html += '</div>';
+    }
+  }
+  container.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -631,10 +786,11 @@ function renderDashboard() {
   container.innerHTML = html;
 }
 
-// TRA-203: Fixed dashFilter to use orderStatusFilter variable directly
+// TRA-203: dashFilter → lifecycle tabs
 function dashFilter(type) {
-  orderStatusFilter = type;
-  switchTab('orders');
+  const map = { neu: 'neu', kontaktiert: 'kontakt', termin: 'termin', erledigt: 'einsatz', notfall: 'neu', ueberfaellig: 'neu' };
+  const target = map[type] || 'neu';
+  switchTab(target);
 }
 
 // ═══════════════════════════════════════════════════════════════
