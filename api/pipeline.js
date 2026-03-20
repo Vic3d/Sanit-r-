@@ -1,8 +1,9 @@
 // /data/.openclaw/workspace/josh-dashboard/api/pipeline.js
 const { Octokit } = require('@octokit/rest');
 
-const OWNER = 'Vicbb-de';
-const REPO = 'josh-dashboard';
+// TRA-202: Fixed repo owner and name
+const OWNER = 'Vic3d';
+const REPO = 'Sanit-r-';
 const FILE_PATH = 'data/pipeline-status.json';
 
 async function readStatus() {
@@ -32,23 +33,37 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // TRA-202: Return graceful error if GITHUB_TOKEN not configured
+  if (!process.env.GITHUB_TOKEN) {
+    return res.status(200).json({ columns: [], error: 'GITHUB_TOKEN not configured' });
+  }
+
   if (req.method === 'GET') {
-    const { content } = await readStatus();
-    return res.status(200).json(content);
+    try {
+      const { content } = await readStatus();
+      return res.status(200).json(content);
+    } catch (e) {
+      return res.status(200).json({ columns: [], error: e.message });
+    }
   }
 
   if (req.method === 'POST') {
-    const { orderId, status } = req.body;
-    const VALID = ['neu','kontaktiert','terminiert','eingeplant','erledigt'];
-    if (!orderId || !VALID.includes(status)) {
-      return res.status(400).json({ error: 'Invalid orderId or status' });
+    try {
+      const { orderId, status } = req.body;
+      const VALID = ['neu','kontaktiert','terminiert','eingeplant','erledigt'];
+      if (!orderId || !VALID.includes(status)) {
+        return res.status(400).json({ error: 'Invalid orderId or status' });
+      }
+      const { content, sha } = await readStatus();
+      content[orderId] = status;
+      await writeStatus(content, sha);
+      return res.status(200).json(content);
+    } catch (e) {
+      return res.status(200).json({ columns: [], error: e.message });
     }
-    const { content, sha } = await readStatus();
-    content[orderId] = status;
-    await writeStatus(content, sha);
-    return res.status(200).json(content);
   }
 
   res.status(405).json({ error: 'Method not allowed' });

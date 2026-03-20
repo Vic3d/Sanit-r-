@@ -157,9 +157,49 @@ async function apiGet(path) {
   return data;
 }
 
-async function getOrders() {
-  const data = await apiGet('/api/orders');
+// TRA-200: Rename original getOrders to _getOrders, add HTML login-page detection
+async function _getOrders() {
+  const session = await getSession();
+  const r = await httpsRequest({
+    hostname: 'bohwk.de',
+    path: '/api/orders',
+    method: 'GET',
+    headers: {
+      'Cookie': cookieString(session.cookies),
+      'Accept': 'application/json',
+    }
+  });
+
+  // Detect HTML login page redirect (session expired)
+  if (r.body.includes('<form') && r.body.includes('Login')) {
+    throw new Error('Session expired — login page returned');
+  }
+
+  const data = JSON.parse(r.body);
+  // Session abgelaufen via ErrorCode?
+  if (data.ErrorCode === -1140001) {
+    throw new Error('Session expired (ErrorCode -1140001)');
+  }
   return data.GetOrdersByTechnicianInTimespanResult?.DataList || [];
+}
+
+// TRA-200: Wrapper with auto-relogin on session expiry
+async function getOrders() {
+  try {
+    const result = await _getOrders();
+    if (!result || (Array.isArray(result) && result.length === 0 && _session)) {
+      // Might be expired session, retry once
+      _session = null;
+      return await _getOrders();
+    }
+    return result;
+  } catch(e) {
+    if (e.message && (e.message.includes('session') || e.message.includes('login') || e.message.includes('401'))) {
+      _session = null;
+      return await _getOrders();
+    }
+    throw e;
+  }
 }
 
 module.exports = { getOrders, getSession };

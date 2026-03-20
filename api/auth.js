@@ -3,6 +3,7 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const PASSWORDS = {
@@ -22,14 +23,16 @@ module.exports = async (req, res) => {
     return res.status(200).json({ token, role });
   }
 
-  // GET /api/auth — Verify token
+  // GET /api/auth — Verify token (TRA-208: check 8h expiry)
   if (req.method === 'GET') {
     const auth = req.headers.authorization || '';
     const token = auth.replace('Bearer ', '');
     try {
       const decoded = Buffer.from(token, 'base64').toString();
-      const [role] = decoded.split(':');
-      if (['chef','backoffice'].includes(role)) {
+      const [role, timestamp] = decoded.split(':');
+      const age = Date.now() - parseInt(timestamp || '0');
+      const MAX_AGE = 8 * 60 * 60 * 1000; // 8h
+      if (['chef','backoffice'].includes(role) && age < MAX_AGE) {
         return res.status(200).json({ valid: true, role });
       }
     } catch {}

@@ -116,6 +116,7 @@
     <div class="nav-right">
       <span id="nav-date"></span>
       <button id="refreshBtn" onclick="loadData(true)" title="Daten aktualisieren">🔄</button>
+      <button onclick="logout()" title="Abmelden" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:16px;padding:4px 8px;border-radius:6px" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#64748b'">🔒</button>
     </div>
   </nav>
 
@@ -255,6 +256,8 @@ async function buildSharedState() {
   }
 
   STATE.ready = true;
+  // TRA-210: Update status bar immediately after state is ready
+  if (typeof updateStatusBar === 'function') updateStatusBar();
 }
 
 // Get assignment for an order: returns tech or null
@@ -395,6 +398,7 @@ function renderCurrentTab() {
   switch (currentTab) {
     case 'dashboard': renderDashboard(); break;
     case 'orders': renderOrders(); break;
+    // TRA-209: contact tab has no nav button — accessible only via code
     case 'contact': renderContact(); break;
     case 'routes': renderRoutes(); break;
     case 'planner': renderPlanner(); break;
@@ -607,12 +611,10 @@ function renderDashboard() {
   container.innerHTML = html;
 }
 
+// TRA-203: Fixed dashFilter to use orderStatusFilter variable directly
 function dashFilter(type) {
+  orderStatusFilter = type;
   switchTab('orders');
-  setTimeout(() => {
-    const filterEl = document.getElementById('orderStatusFilter');
-    if (filterEl) { filterEl.value = type; filterEl.dispatchEvent(new Event('change')); }
-  }, 100);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -925,6 +927,14 @@ function renderOrders() {
 // ═══════════════════════════════════════════════════════════════
 // TAB 2: NOCH ANSCHREIBEN
 // ═══════════════════════════════════════════════════════════════
+// TRA-212: Helper to clean phone numbers for WhatsApp wa.me URLs
+function cleanPhoneForWa(phone) {
+  if (!phone) return '';
+  let p = phone.replace(/\D/g, '');
+  if (p.startsWith('0')) p = '49' + p.slice(1);
+  return p;
+}
+
 function renderContact() {
   const container = document.getElementById('content-contact');
   const orders = DATA.orders?.needContact || [];
@@ -971,6 +981,17 @@ function renderContact() {
               const mainClean = (o.Telephone || '').replace(/[^\d+]/g, '');
               return p !== mainClean && !mainClean.includes(p.replace('+49','0').replace(/^0/,''));
             }).map(p => `<div class="text-sm mt-1"><a href="tel:${esc(p)}" class="text-emerald-400 hover:text-emerald-300">📱 ${esc(p)} <span class="text-xs text-slate-500">(aus Beschreibung)</span></a></div>`).join('')}
+            ${function(o){
+              const waPhone = cleanPhoneForWa(o.Telephone && o.Telephone !== '-' ? o.Telephone : ((o._allPhones || [])[0] || ''));
+              if (!waPhone) return '';
+              const dt = 'Guten Tag ' + esc(o.Renter || '') + ',\nmein Name ist [Techniker] von Gebr. Schutzeichel.\nWir haben einen Auftrag fuer Sie erhalten: ' + esc(o.Craft || '') + ' - ' + esc(o.Damage || o.DisturbanceType || '') + '.\nBitte melden Sie sich, damit wir einen Termin vereinbaren koennen.\nAdresse: ' + esc(o.Street) + ', ' + esc(o.Zipcode) + ' ' + esc(o.City);
+              const enc = encodeURIComponent(dt);
+              const waUrl = 'https://wa.me/' + waPhone + '?text=' + enc;
+              return '<div class="mt-2 flex gap-2">'
+                + '<button onclick="navigator.clipboard.writeText(decodeURIComponent(\'' + enc + '\')).then(function(){ this.textContent=\'✅ Kopiert!\'; }.bind(this)).catch(function(){})" class="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors">📋 Kopieren</button>'
+                + '<a href="' + waUrl + '" target="_blank" class="text-xs px-2 py-1 bg-green-700 hover:bg-green-600 text-white rounded transition-colors">💬 WhatsApp</a>'
+                + '</div>';
+            }(o)}
           </div>` : '<div class="text-slate-500 mb-3">Keine Telefonnummer</div>'}
         <div class="text-xs text-slate-500 mb-2">${esc(o.Craft)} — ${esc(o.Damage || o.DisturbanceType || '')}</div>
         ${techRec ? `<div class="text-xs text-slate-400">👷 Empfehlung: <span class="text-white font-medium">${esc(techRec.name)}</span></div>` : ''}
@@ -1020,10 +1041,10 @@ function renderRoutes() {
   // Preserve sort mode across renders
   if (!window._routeSortMode) window._routeSortMode = 'newest';
 
-  // Build tech cards HTML
+  // Build tech cards HTML (TRA-204: added data-tech-id, changed onclick to selectTechCard)
   const techCards = TECHS.map(t => {
     const isSelected = routeSelectedTech === t.id;
-    return `<div class="tech-card ${isSelected ? 'selected' : ''}" style="border-color:${isSelected ? t.color : '#334155'}" onclick="onTechCardSelected(${t.id})">
+    return `<div class="tech-card ${isSelected ? 'selected' : ''}" data-tech-id="${t.id}" style="border-color:${isSelected ? t.color : '#334155'}" onclick="selectTechCard(${t.id})">
       <div style="font-size:22px;">👷</div>
       <div class="tc-name" style="color:${isSelected ? t.color : '#fff'}">${esc(t.name)}</div>
       <div class="tc-city">${esc(t.city)}</div>
@@ -1037,7 +1058,7 @@ function renderRoutes() {
     <!-- Step 1: Monteur wählen -->
     <div class="mb-4">
       <div class="wizard-step mb-3">
-        <span class="wizard-num ${step1Done ? 'done' : 'active'}">1</span>
+        <span id="wizard-step-1" class="wizard-num ${step1Done ? 'done' : 'active'}">1</span>
         <span class="wizard-label active">Monteur wählen</span>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">${techCards}</div>
@@ -1046,7 +1067,7 @@ function renderRoutes() {
     <!-- Step 2: Aufträge (erscheint nach Monteur-Auswahl) -->
     <div class="${step1Done ? '' : 'opacity-40 pointer-events-none'}">
       <div class="wizard-step mb-3">
-        <span class="wizard-num ${step2Done ? 'done' : step1Done ? 'active' : 'pending'}">2</span>
+        <span id="wizard-step-2" class="wizard-num ${step2Done ? 'done' : step1Done ? 'active' : 'pending'}">2</span>
         <span class="wizard-label ${step1Done ? 'active' : 'pending'}">Aufträge auswählen</span>
         <div class="flex items-center gap-2 ml-auto">
           <label class="text-xs text-slate-500">Zeitraum:</label>
@@ -1080,7 +1101,7 @@ function renderRoutes() {
     <!-- Step 3: Route optimieren -->
     <div class="mt-4 ${step2Done ? '' : 'hidden'}" id="step3-section">
       <div class="wizard-step mb-3">
-        <span class="wizard-num active">3</span>
+        <span id="wizard-step-3" class="wizard-num active">3</span>
         <span class="wizard-label active">Route optimieren &amp; senden</span>
       </div>
       <div class="flex gap-3 flex-wrap">
@@ -1138,17 +1159,40 @@ function clearRouteMap() {
   routeMapLayers = [];
 }
 
-function onTechSelected() {
-  const sel = document.getElementById('techSelect');
-  routeSelectedTech = sel ? (sel.value ? parseInt(sel.value) : null) : routeSelectedTech;
+// TRA-213: Dynamic wizard step updates
+function updateWizardSteps(completedStep) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById('wizard-step-' + i);
+    if (!el) return;
+    if (i < completedStep) {
+      el.textContent = '✅';
+      el.style.background = '#22c55e';
+    } else if (i === completedStep) {
+      el.style.background = '#3b82f6';
+    } else {
+      el.style.background = '#374151';
+    }
+  }
+}
+
+// TRA-204: selectTechCard replaces broken onTechSelected (which referenced non-existent techSelect)
+function selectTechCard(techId) {
+  routeSelectedTech = techId;
   routeSelectedOrders.clear();
   const resultEl = document.getElementById('route-result');
   if (resultEl) resultEl.innerHTML = '';
   clearRouteMap();
   showTechHomes();
   loadRouteOrders();
-  updateOptimizeBtn();
+  document.querySelectorAll('.tech-card').forEach(c => {
+    const isSelected = parseInt(c.dataset.techId) === techId;
+    c.style.borderColor = isSelected ? '#3b82f6' : '#334155';
+    c.style.boxShadow = isSelected ? '0 0 0 2px #3b82f6' : 'none';
+  });
+  updateWizardSteps(1);
 }
+// Keep onTechSelected as alias for backward compat
+function onTechSelected() { if (routeSelectedTech) selectTechCard(routeSelectedTech); }
 
 function onTechCardSelected(techId) {
   routeSelectedTech = techId;
@@ -2517,6 +2561,12 @@ async function renderPipeline() {
 // ═══════════════════════════════════════════════════════════════
 // AUTH
 // ═══════════════════════════════════════════════════════════════
+// TRA-208: Logout function
+function logout() {
+  localStorage.removeItem('josh_token');
+  location.reload();
+}
+
 async function checkAuth() {
   const token = localStorage.getItem('josh_token');
   if (!token) { showLogin(); return false; }

@@ -96,6 +96,7 @@ function getRecommendedTechnician(techs, region) {
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store');
 
   const force = req.query.refresh === '1';
   const now = Date.now();
