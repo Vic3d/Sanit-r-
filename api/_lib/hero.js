@@ -87,4 +87,16 @@ async function getVictorTasks() {
     }));
 }
 
-module.exports = { getTodayAppointments, getVictorTasks };
+async function getAllJobs() {
+  const data = await graphql(`{
+    field_service_jobs {
+      id title start end type status_name description
+      contact { first_name last_name phone_mobile email }
+      address { street city zipcode }
+      customer { id full_name company_id }
+    }
+  }`);
+  return data?.field_service_jobs || [];
+}
+
+module.exports = { getTodayAppointments, getVictorTasks, getAllJobs };

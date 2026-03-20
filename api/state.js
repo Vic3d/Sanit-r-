@@ -1,6 +1,6 @@
 const { getOrders } = require('./_lib/bohwk');
 const { getOpenConversations, getRepliedPhones } = require('./_lib/superchat');
-const { getTodayAppointments, getVictorTasks } = require('./_lib/hero');
+const { getTodayAppointments, getVictorTasks, getAllJobs } = require('./_lib/hero');
 const { analyze } = require('./_lib/analyzer');
 const { getAllContacts } = require('./_lib/contacts');
 const { matchOrders } = require('./_lib/matcher');
@@ -26,7 +26,18 @@ const TECHNICIANS = {
 };
 
 // Cache NUR für B&O + Hero (selten ändernd)
-let cache = { bohwk: null, hero: null, tasks: null, at: 0 };
+let cache = { bohwk: null, hero: null, tasks: null, heroJobs: null, at: 0 };
+
+// Build Hero job index by normalized address
+function normalizeAddr(street, zipcode) {
+  if (!street) return null;
+  return (street + '|' + (zipcode || ''))
+    .toLowerCase()
+    .replace(/\bstr\b\.?/g, 'straße')
+    .replace(/\bstr\.\s*/g, 'straße ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 const CACHE_TTL = 5 * 60 * 1000;
 
 function getRegion(zipcode) {
@@ -109,16 +120,18 @@ module.exports = async (req, res) => {
     const contactsPromise = getAllContacts(force);
 
     // B&O + Hero aus Cache oder neu laden
-    let bohwk, hero, tasks;
+    let bohwk, hero, tasks, heroJobs;
     if (cacheValid) {
       bohwk = cache.bohwk;
       hero = cache.hero;
       tasks = cache.tasks;
+      heroJobs = cache.heroJobs || [];
     } else {
-      const [ordersResult, heroResult, tasksResult] = await Promise.allSettled([
+      const [ordersResult, heroResult, tasksResult, heroJobsResult] = await Promise.allSettled([
         getOrders(),
         getTodayAppointments(),
         getVictorTasks(),
+        getAllJobs(),
       ]);
       const timestamp = new Date().toISOString();
 
@@ -143,7 +156,21 @@ module.exports = async (req, res) => {
         tasks = { items: [], lastUpdate: timestamp, error: tasksResult.reason?.message || 'Fehler' };
       }
 
-      cache = { bohwk, hero, tasks, at: now };
+      heroJobs = heroJobsResult.status === 'fulfilled' ? heroJobsResult.value : [];
+
+      cache = { bohwk, hero, tasks, heroJobs, at: now };
+    }
+
+    // Build Hero job index by normalized address (most recent non-archived per address)
+    const heroJobIndex = new Map();
+    for (const job of heroJobs) {
+      if (job.status_name === 'Archiviert') continue;
+      const key = normalizeAddr(job.address?.street, job.address?.zipcode);
+      if (!key) continue;
+      const existing = heroJobIndex.get(key);
+      if (!existing || (job.start || '') > (existing.start || '')) {
+        heroJobIndex.set(key, job);
+      }
     }
 
     // Superchat-Ergebnisse abwarten
@@ -164,12 +191,24 @@ module.exports = async (req, res) => {
     const allRawOrders = bohwk.rawOrders || [];
     const matchedOrders = matchOrders(allRawOrders, contacts);
 
-    // Enrich with analysis + region
-    const enrichedOrders = matchedOrders.map(o => ({
-      ...o,
-      _analysis: analyze(o),
-      _region: getRegion(o.Zipcode),
-    }));
+    // Enrich with analysis + region + Hero cross-match
+    const enrichedOrders = matchedOrders.map(o => {
+      const addrKey = normalizeAddr(o.Street, o.Zipcode);
+      const heroJob = addrKey ? (heroJobIndex.get(addrKey) || null) : null;
+      return {
+        ...o,
+        _analysis: analyze(o),
+        _region: getRegion(o.Zipcode),
+        _heroJob: heroJob ? {
+          id: heroJob.id,
+          title: heroJob.title,
+          status: heroJob.status_name,
+          type: heroJob.type,
+          start: heroJob.start,
+          description: heroJob.description || '',
+        } : null,
+      };
+    });
 
     // Categorize orders
     const needContact = [];
@@ -248,6 +287,13 @@ module.exports = async (req, res) => {
       superchat,
       hero,
       tasks,
+      heroStats: {
+        total: heroJobs.length,
+        byStatus: heroJobs.reduce((acc, j) => { acc[j.status_name] = (acc[j.status_name] || 0) + 1; return acc; }, {}),
+        invoicePending: heroJobs.filter(j => j.status_name === 'Rechnung').length,
+        emergency: heroJobs.filter(j => j.type === 'emergency' && j.status_name !== 'Archiviert' && j.status_name !== 'Abgeschlossen').length,
+        openJobs: heroJobs.filter(j => ['Offen', 'Zugewiesen'].includes(j.status_name)),
+      },
       cached: cacheValid,
     });
   } catch (err) {
