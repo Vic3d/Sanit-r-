@@ -1717,6 +1717,7 @@ async function optimizeSelectedRoute() {
 
 function buildGmapsUrl(tech, orders) {
   // TRA-215: Echte Straßenadressen statt PLZ-Koordinaten — Google Maps geocodet selbst
+  // TRA-229: KEIN optimize:true — OSRM-Reihenfolge wird respektiert (Dashboard = Google Maps)
   // Origin + Destination = Heimatort (Koordinaten für präzisen Startpunkt)
   const home = tech.home[1] + ',' + tech.home[0];
 
@@ -1739,7 +1740,7 @@ function buildGmapsUrl(tech, orders) {
     .join('|');
 
   let url = 'https://www.google.com/maps/dir/?api=1&origin=' + home + '&destination=' + home + '&travelmode=driving';
-  if (stops) url += '&waypoints=optimize:true|' + stops;
+  if (stops) url += '&waypoints=' + stops; // TRA-229: kein optimize:true → OSRM-Reihenfolge beibehalten
   return url;
 }
 
@@ -2366,7 +2367,7 @@ async function calcTechRoute(techId) {
     const data = await res.json();
     const routeOrders = data.orders || orders; // Nearest Neighbor sortierte Orders
 
-    // Google Maps URL — optimize:true lässt Google die beste Reihenfolge wählen
+    // Google Maps URL — KEIN optimize:true (TRA-229) → OSRM-Reihenfolge wird respektiert
     // buildGmapsUrl dedupliziert Koordinaten (mehrere Aufträge gleiche PLZ → ein Stop)
     const gmapsUrl = buildGmapsUrl(tech, routeOrders);
 

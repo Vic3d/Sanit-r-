@@ -1,4 +1,15 @@
-const https = require('https');
+/**
+ * routes.js — Routenoptimierung für Gebr. Schutzeichel
+ *
+ * Pipeline:
+ *  1. Geocoding: Straßenadresse → echte [lon,lat] (Nominatim, gecacht)
+ *  2. Outlier-Erkennung: Aufträge >50km vom Heimatort → separates Panel
+ *  3. OSRM Trip API: echte Straßenroute (roundtrip Heimat→Stops→Heimat)
+ *  4. Fallback: Nearest Neighbor + 2-opt (wenn OSRM nicht verfügbar)
+ */
+
+const https    = require('https');
+const { geocodeBatch } = require('./_lib/geocoder');
 
 const TECHNICIANS = [
   { id: 1, name: 'Nico Kussio',  home: [8.3858, 51.9069], city: 'Gütersloh', color: '#3b82f6', boId: 158934 },
@@ -7,6 +18,7 @@ const TECHNICIANS = [
   { id: 4, name: 'Ramiz',        home: [7.8159, 51.6739], city: 'Hamm',      color: '#ef4444', boId: 158931 },
 ];
 
+// ── Haversine (Luftlinie, Fallback-Distanzberechnung) ─────────────────────────
 function haversine(lon1, lat1, lon2, lat2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -15,7 +27,7 @@ function haversine(lon1, lat1, lon2, lat2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// Für jeden Auftrag: welcher Techniker ist am nächsten?
+// Welcher Monteur liegt am nächsten (für Ausreißer-Vorschlag)?
 function bestTechForOrder(order, allTechs) {
   let best = null, bestDist = Infinity;
   for (const t of allTechs) {
@@ -25,23 +37,31 @@ function bestTechForOrder(order, allTechs) {
   return { tech: best, dist: Math.round(bestDist) };
 }
 
-// ── OSRM Trip API (echte Straßenoptimierung) ──────────────────────
+// ── OSRM Trip API (echte Straßenoptimierung) ──────────────────────────────────
 function osrmTrip(coords) {
   const coordStr = coords.map(c => `${c[0]},${c[1]}`).join(';');
-  const path = `/trip/v1/driving/${coordStr}?roundtrip=true&source=first&annotations=duration,distance&geometries=geojson`;
+  // source=first: Heimatort ist immer erster Stop
+  // destination=last: Heimatrückkehr am Ende
+  // roundtrip=true: geschlossene Route
+  const path = `/trip/v1/driving/${coordStr}?roundtrip=true&source=first&destination=last&annotations=duration,distance&geometries=geojson`;
   return new Promise((resolve, reject) => {
-    https.get({ hostname: 'router.project-osrm.org', path, headers: { 'User-Agent': 'JoshDashboard/1.0' } }, (res) => {
-      let data = '';
-      res.on('data', c => data += c);
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch { reject(new Error('OSRM parse error')); }
-      });
-    }).on('error', reject);
+    const req = https.get(
+      { hostname: 'router.project-osrm.org', path, headers: { 'User-Agent': 'JoshDashboard/1.0' } },
+      (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch { reject(new Error('OSRM parse error')); }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.setTimeout(8000, () => { req.destroy(); reject(new Error('OSRM timeout')); });
   });
 }
 
-// ── Fallback: Nearest Neighbor + 2-opt ───────────────────────────
+// ── Fallback: Nearest Neighbor + 2-opt ───────────────────────────────────────
 function routeDistTotal(start, route) {
   if (!route.length) return 0;
   let d = haversine(start[0], start[1], route[0].coords[0], route[0].coords[1]);
@@ -83,6 +103,7 @@ function twoOpt(start, route) {
   return best;
 }
 
+// ── Main Handler ──────────────────────────────────────────────────────────────
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -95,32 +116,48 @@ module.exports = async (req, res) => {
       ? (typeof req.body === 'string' ? JSON.parse(req.body) : req.body) || {}
       : {};
 
+    // GET: Techniker-Liste zurückgeben
     if (req.method === 'GET') return res.json({ technicians: TECHNICIANS });
 
     if (body.action === 'optimize') {
       const tech = TECHNICIANS.find(t => t.id === parseInt(body.techId));
       if (!tech) return res.status(400).json({ error: 'Techniker nicht gefunden' });
 
-      const allOrders = (body.orders || []).filter(o => o.coords);
+      const allOrders = (body.orders || []).filter(o => o.coords || (o.street && o.zipcode));
       if (!allOrders.length) return res.json({ tech, orders: [], outliers: [], totalDistance: 0, totalDuration: 0 });
 
-      // Pipeline-Filter: nur terminierte Aufträge
+      // Pipeline-Filter: nur terminierte Aufträge (wenn Pipeline befüllt)
       let pipelineStatus = {};
       try { pipelineStatus = require('../data/pipeline-status.json'); } catch {}
       let orders = allOrders;
       if (Object.keys(pipelineStatus).length > 0) {
-        orders = orders.filter(o => pipelineStatus[o.id] === 'terminiert');
-      }
-      // Wenn keine terminierten → alle nehmen (Fallback für leere Pipeline)
-      if (orders.length === 0 && Object.keys(pipelineStatus).length === 0) {
-        // Kein Filter wenn Pipeline noch leer ist
-        orders = allOrders;
+        const filtered = orders.filter(o => pipelineStatus[o.id] === 'terminiert');
+        if (filtered.length > 0) orders = filtered;
       }
 
-      // ── Ausreißer-Erkennung ──────────────────────────────────────
-      // Schwellenwert: >50km Luftlinie vom Heimatort des Technikers
+      // ── SCHRITT 1: Echte Straßenkoordinaten per Nominatim ──────────────────
+      // geocodeBatch überschreibt PLZ-Koordinaten mit echten Straßen-Koordinaten.
+      // Timeout 15s → danach PLZ-Fallback für restliche Adressen.
+      // Cache: in-memory (warm Lambda), Cache-Hit = kein API-Call.
+      console.log(`[routes] Geocoding ${orders.length} Adressen…`);
+      const geocodedCoords = await geocodeBatch(
+        orders,
+        {},       // kein PLZ-Fallback von hier — coords kommen schon vom Frontend
+        15000     // 15s Gesamt-Timeout
+      );
+      orders = orders.map((o, i) => ({
+        ...o,
+        coords: geocodedCoords[i] || o.coords, // Real coords überschreiben PLZ-Zentrum
+      }));
+
+      // ── SCHRITT 2: Notfälle priorisieren ───────────────────────────────────
+      // Notfall-Aufträge kommen zuerst in den OSRM-Input → werden als erste Stops geplant
+      const emergencies = orders.filter(o => o.emergency && o.coords);
+      const normals     = orders.filter(o => !o.emergency && o.coords);
+      orders = [...emergencies, ...normals];
+
+      // ── SCHRITT 3: Ausreißer-Erkennung (>50km Luftlinie vom Heimatort) ─────
       const OUTLIER_KM = 50;
-
       const enriched = orders.map(o => {
         const distFromHome = Math.round(haversine(tech.home[0], tech.home[1], o.coords[0], o.coords[1]));
         const { tech: betterTech, dist: betterDist } = bestTechForOrder(o, TECHNICIANS.filter(t => t.id !== tech.id));
@@ -132,16 +169,15 @@ module.exports = async (req, res) => {
         };
       });
 
-      const outliers  = enriched.filter(o => o.isOutlier);
-      const mainOrders = enriched.filter(o => !o.isOutlier);
-
-      // Wenn alle Stops Ausreißer sind — trotzdem routen
+      const outliers    = enriched.filter(o => o.isOutlier);
+      const mainOrders  = enriched.filter(o => !o.isOutlier);
       const ordersToRoute = mainOrders.length ? mainOrders : enriched;
 
+      // ── SCHRITT 4: OSRM Trip Optimierung ───────────────────────────────────
       let route, totalDistance, totalDuration, routeGeometry, source = 'osrm';
 
       try {
-        // OSRM: Home → alle Stops → Home (roundtrip=true, source=first)
+        // Heimatort als erster Waypoint, dann alle Stops
         const coords = [tech.home, ...ordersToRoute.map(o => o.coords)];
         const osrm = await osrmTrip(coords);
 
@@ -149,37 +185,45 @@ module.exports = async (req, res) => {
 
         const trip = osrm.trips[0];
 
-        // Waypoint-Mapping: waypoints[i].waypoint_index = Position im Trip für Input i
-        const tripPositionToInput = new Array(osrm.waypoints.length);
+        // Waypoint-Mapping: waypoints[i].waypoint_index = Position des i-ten Inputs im optimierten Trip
+        // Input 0 = Heimatort → überspringen
+        // Input 1..N = Aufträge → tripPositionToInputIdx gibt Reihenfolge
+        const waypointOrder = new Array(ordersToRoute.length);
         osrm.waypoints.forEach((wp, inputIdx) => {
-          tripPositionToInput[wp.waypoint_index] = inputIdx;
+          if (inputIdx === 0) return; // Heimatort
+          const tripPos = wp.waypoint_index;
+          waypointOrder[tripPos - 1] = inputIdx - 1; // -1 weil inputIdx=1 → ordersToRoute[0]
         });
-        // Position 0 = Startpunkt (home) → überspringen; -1 weil home auf inputIdx=0 war
-        const waypointOrder = tripPositionToInput.slice(1).map(inputIdx => inputIdx - 1);
-        route = waypointOrder.map(i => ordersToRoute[i]).filter(Boolean);
+        route = waypointOrder.filter(i => i !== undefined).map(i => ordersToRoute[i]).filter(Boolean);
 
-        totalDistance = Math.round(trip.distance / 100) / 10;
-        totalDuration = Math.round(trip.duration);
+        // Fehlende Aufträge ans Ende (Sicherheitsnetz)
+        const routedIds = new Set(route.map(o => o.id));
+        const missing = ordersToRoute.filter(o => !routedIds.has(o.id));
+        if (missing.length) route.push(...missing);
+
+        totalDistance = Math.round(trip.distance / 100) / 10;  // m → km mit 1 Nachkommastelle
+        totalDuration = Math.round(trip.duration);              // Sekunden
         routeGeometry = trip.geometry?.coordinates || null;
 
       } catch (osrmErr) {
-        console.warn('[routes] OSRM failed, fallback:', osrmErr.message);
+        console.warn('[routes] OSRM failed, Fallback:', osrmErr.message);
         source = 'fallback';
         route = nearestNeighborRoute(tech.home, ordersToRoute);
         const dist = routeDistTotal(tech.home, route);
         totalDistance = Math.round(dist * 10) / 10;
-        totalDuration = Math.round(dist / 50 * 3600);
+        totalDuration = Math.round(dist / 50 * 3600); // 50 km/h Schätzung
         routeGeometry = null;
       }
 
       return res.json({
-        tech: { id: tech.id, name: tech.name, home: tech.home, color: tech.color, city: tech.city },
-        orders: route,
+        tech:          { id: tech.id, name: tech.name, home: tech.home, color: tech.color, city: tech.city },
+        orders:        route,
         outliers,
         totalDistance,
         totalDuration,
         routeGeometry,
         source,
+        geocoderStats: { cacheSize: require('./_lib/geocoder').cacheSize() },
       });
     }
 
