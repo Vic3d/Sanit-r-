@@ -1294,8 +1294,15 @@ function loadRouteOrders() {
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
     const cut = cutoff.toISOString().split('T')[0];
     filtered = STATE.orders.filter(o => o.dateStr >= cut && o.coords);
+    // Wenn Techniker ausgewählt: nur Aufträge im 60km Radius anzeigen
+    if (routeSelectedTech) {
+      filtered = filtered.filter(function(o) { return (o.distances && o.distances[routeSelectedTech] !== undefined ? o.distances[routeSelectedTech] : 999) < 60; });
+    }
   } else {
     filtered = STATE.orders.filter(o => o.coords);
+    if (routeSelectedTech) {
+      filtered = filtered.filter(function(o) { return (o.distances && o.distances[routeSelectedTech] !== undefined ? o.distances[routeSelectedTech] : 999) < 60; });
+    }
   }
 
   routeAllOrders = filtered;
@@ -1421,10 +1428,16 @@ async function optimizeSelectedRoute() {
 
 function buildGmapsUrl(tech, orders) {
   // Origin + Destination = Heimatort → Rundtour
-  const home = `${tech.home[1]},${tech.home[0]}`;
-  const stops = orders.map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
-  let url = `https://www.google.com/maps/dir/?api=1&origin=${home}&destination=${home}&travelmode=driving`;
-  if (stops) url += `&waypoints=optimize:true|${stops}`;
+  const home = tech.home[1] + ',' + tech.home[0];
+  // Deduplicate: mehrere Aufträge in gleicher PLZ → gleiche Koordinaten → ein Waypoint
+  const seen = new Set();
+  const stops = orders
+    .filter(function(o) { return o.coords; })
+    .map(function(o) { return o.coords[1] + ',' + o.coords[0]; })
+    .filter(function(c) { if (seen.has(c)) return false; seen.add(c); return true; })
+    .join('|');
+  let url = 'https://www.google.com/maps/dir/?api=1&origin=' + home + '&destination=' + home + '&travelmode=driving';
+  if (stops) url += '&waypoints=optimize:true|' + stops;
   return url;
 }
 
@@ -2115,14 +2128,15 @@ function exportPlannerRoutes() {
     });
     // Google Maps link for this tech's route
     if (assigned.length > 0 && assigned[0].coords) {
-      const origin = `${t.home[1]},${t.home[0]}`;
-      const waypoints = assigned.slice(0, -1).filter(o => o.coords).map(o => `${o.coords[1]},${o.coords[0]}`).join('|');
-      const last = assigned.filter(o => o.coords).pop();
-      if (last) {
-        const dest = `${last.coords[1]},${last.coords[0]}`;
-        let gmUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`;
-        if (waypoints) gmUrl += `&waypoints=${waypoints}`;
-        text += `   📍 Maps: ${gmUrl}\n`;
+      const origin = t.home[1] + ',' + t.home[0];
+      const wpSeen = new Set();
+      const waypoints = assigned.filter(o => o.coords)
+        .map(o => o.coords[1] + ',' + o.coords[0])
+        .filter(c => { if (wpSeen.has(c)) return false; wpSeen.add(c); return true; })
+        .join('|');
+      if (waypoints) {
+        const gmUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + origin + '&travelmode=driving&waypoints=optimize:true|' + waypoints;
+        text += '   📍 Maps: ' + gmUrl + '\n';
       }
     }
     text += '\n';
