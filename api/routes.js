@@ -10,6 +10,7 @@
 
 const https    = require('https');
 const { geocodeBatch } = require('./_lib/geocoder');
+const ors      = require('./_lib/ors');
 
 const TECHNICIANS = [
   { id: 1, name: 'Nico Kussio',  home: [8.3858, 51.9069], city: 'Gütersloh', color: '#3b82f6', boId: 158934 },
@@ -103,6 +104,22 @@ function twoOpt(start, route) {
   return best;
 }
 
+// ── Auftragsdauer-Schätzung nach Gewerk/Störungstyp ──────────────────────────
+// Gibt geschätzte Einsatzdauer in Sekunden zurück
+function estimateJobDuration(order) {
+  const craft = (order.craft || '').toLowerCase();
+  const dist  = (order.disturbanceType || order.damage || '').toLowerCase();
+  const text  = craft + ' ' + dist;
+
+  if (order.emergency)                          return 7200;  // Notfall: 2h
+  if (text.includes('bad') || text.includes('installation')) return 10800; // Bad/Installation: 3h
+  if (text.includes('heizung') || text.includes('thermostat')) return 2700; // Heizung: 45min
+  if (text.includes('rohr') || text.includes('leck'))          return 3600; // Rohrbruch: 1h
+  if (text.includes('wc') || text.includes('dusche'))          return 2700; // WC/Dusche: 45min
+  if (text.includes('wartung') || text.includes('service'))    return 3600; // Wartung: 1h
+  return 3600; // Default: 1h
+}
+
 // ── Main Handler ──────────────────────────────────────────────────────────────
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -173,45 +190,68 @@ module.exports = async (req, res) => {
       const mainOrders  = enriched.filter(o => !o.isOutlier);
       const ordersToRoute = mainOrders.length ? mainOrders : enriched;
 
-      // ── SCHRITT 4: OSRM Trip Optimierung ───────────────────────────────────
+      // ── SCHRITT 4: Routenoptimierung ────────────────────────────────────────
+      // Reihenfolge: ORS (wenn API Key gesetzt) → OSRM Public → Nearest Neighbor Fallback
       let route, totalDistance, totalDuration, routeGeometry, source = 'osrm';
 
-      try {
-        // Heimatort als erster Waypoint, dann alle Stops
-        const coords = [tech.home, ...ordersToRoute.map(o => o.coords)];
-        const osrm = await osrmTrip(coords);
+      const routeCoords = [tech.home, ...ordersToRoute.map(o => o.coords)];
 
-        if (osrm.code !== 'Ok' || !osrm.trips?.[0]) throw new Error('OSRM: ' + (osrm.message || osrm.code));
+      // ── Versuch 1: OpenRouteService (wenn ORS_API_KEY in Env) ──────────────
+      if (ors.isAvailable()) {
+        try {
+          const jobs = ordersToRoute.map((o, i) => ({
+            id: i,
+            location: o.coords,
+            service: estimateJobDuration(o), // Schätzung pro Auftragstyp (Sekunden)
+          }));
+          const result = await ors.orsOptimize({ start: tech.home, end: tech.home }, jobs);
+          route         = result.route;
+          totalDistance = result.distance_m ? Math.round(result.distance_m / 100) / 10 : null;
+          totalDuration = result.duration_s || null;
+          routeGeometry = result.geometry   || null;
+          source        = 'ors';
+          console.log(`[routes] ORS Optimization: ${route.length} Stops, ${totalDistance}km`);
+        } catch (orsErr) {
+          console.warn('[routes] ORS failed, versuche OSRM:', orsErr.message);
+        }
+      }
 
-        const trip = osrm.trips[0];
+      // ── Versuch 2: OSRM Trip API (Public Server) ───────────────────────────
+      if (!route) {
+        try {
+          const osrm = await osrmTrip(routeCoords);
+          if (osrm.code !== 'Ok' || !osrm.trips?.[0]) throw new Error('OSRM: ' + (osrm.message || osrm.code));
 
-        // Waypoint-Mapping: waypoints[i].waypoint_index = Position des i-ten Inputs im optimierten Trip
-        // Input 0 = Heimatort → überspringen
-        // Input 1..N = Aufträge → tripPositionToInputIdx gibt Reihenfolge
-        const waypointOrder = new Array(ordersToRoute.length);
-        osrm.waypoints.forEach((wp, inputIdx) => {
-          if (inputIdx === 0) return; // Heimatort
-          const tripPos = wp.waypoint_index;
-          waypointOrder[tripPos - 1] = inputIdx - 1; // -1 weil inputIdx=1 → ordersToRoute[0]
-        });
-        route = waypointOrder.filter(i => i !== undefined).map(i => ordersToRoute[i]).filter(Boolean);
+          const trip = osrm.trips[0];
 
-        // Fehlende Aufträge ans Ende (Sicherheitsnetz)
-        const routedIds = new Set(route.map(o => o.id));
-        const missing = ordersToRoute.filter(o => !routedIds.has(o.id));
-        if (missing.length) route.push(...missing);
+          // Waypoint-Mapping: waypoints[i].waypoint_index = Position im optimierten Trip
+          const waypointOrder = new Array(ordersToRoute.length);
+          osrm.waypoints.forEach((wp, inputIdx) => {
+            if (inputIdx === 0) return; // Heimatort überspringen
+            waypointOrder[wp.waypoint_index - 1] = inputIdx - 1;
+          });
+          route = waypointOrder.filter(i => i !== undefined).map(i => ordersToRoute[i]).filter(Boolean);
 
-        totalDistance = Math.round(trip.distance / 100) / 10;  // m → km mit 1 Nachkommastelle
-        totalDuration = Math.round(trip.duration);              // Sekunden
-        routeGeometry = trip.geometry?.coordinates || null;
+          // Sicherheitsnetz: fehlende Stops ans Ende
+          const routedIds = new Set(route.map(o => o.id));
+          ordersToRoute.filter(o => !routedIds.has(o.id)).forEach(o => route.push(o));
 
-      } catch (osrmErr) {
-        console.warn('[routes] OSRM failed, Fallback:', osrmErr.message);
-        source = 'fallback';
-        route = nearestNeighborRoute(tech.home, ordersToRoute);
-        const dist = routeDistTotal(tech.home, route);
+          totalDistance = Math.round(trip.distance / 100) / 10;
+          totalDuration = Math.round(trip.duration);
+          routeGeometry = trip.geometry?.coordinates || null;
+          source        = 'osrm';
+        } catch (osrmErr) {
+          console.warn('[routes] OSRM failed, Nearest Neighbor Fallback:', osrmErr.message);
+        }
+      }
+
+      // ── Fallback: Nearest Neighbor + 2-opt (keine externe API) ────────────
+      if (!route) {
+        source        = 'fallback';
+        route         = nearestNeighborRoute(tech.home, ordersToRoute);
+        const dist    = routeDistTotal(tech.home, route);
         totalDistance = Math.round(dist * 10) / 10;
-        totalDuration = Math.round(dist / 50 * 3600); // 50 km/h Schätzung
+        totalDuration = Math.round(dist / 50 * 3600); // ~50 km/h Durchschnitt
         routeGeometry = null;
       }
 

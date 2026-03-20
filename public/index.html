@@ -410,7 +410,7 @@ function renderCurrentTab() {
     case 'termin':     renderLifecycleTermin(); break;
     case 'einsatz':    renderLifecycleEinsatz(); break;
     case 'rechnung':   renderLifecycleRechnung(); break;
-    case 'routes':     renderRoutes(); break;
+    case 'routes':     renderRoutes(); loadRoadDistances(); break;
     case 'email':      renderEmail(); break;
     // Legacy (accessible via dashFilter or code)
     case 'orders':     renderOrders(); break;
@@ -1554,6 +1554,55 @@ function haversineKm(lon1, lat1, lon2, lat2) {
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
   return Math.round(6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 10) / 10;
+}
+
+// Straßendistanzen via OSRM Matrix API laden (lazy, wenn Route-Tab geöffnet)
+// Überschreibt o.distances[techId] mit echten Fahrstrecken (statt Luftlinie)
+let _roadDistancesLoaded = false;
+async function loadRoadDistances() {
+  if (_roadDistancesLoaded || !STATE.ready || !STATE.orders.length) return;
+
+  const ordersWithCoords = STATE.orders.filter(o => o.coords).slice(0, 200); // max 200
+  if (!ordersWithCoords.length) return;
+
+  const infoEl = document.getElementById('route-info');
+  if (infoEl) infoEl.innerHTML = '⏳ Berechne echte Fahrstrecken…';
+
+  try {
+    const payload = { orders: ordersWithCoords.map(o => ({ id: o.id, coords: o.coords })) };
+    const res  = await fetch('/api/matrix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Matrix API ' + res.status);
+    const data = await res.json();
+
+    if (data.matrix && Object.keys(data.matrix).length > 0) {
+      // o.distances[techId] mit echten km überschreiben
+      STATE.orders.forEach(o => {
+        const techDistances = data.matrix[o.id];
+        if (!techDistances) return;
+        TECHS.forEach(t => {
+          const d = techDistances[t.id];
+          if (d && d.distance_km != null) {
+            o.distances[t.id] = d.distance_km; // Überschreibt Haversine-Wert
+          }
+        });
+      });
+      _roadDistancesLoaded = true;
+      console.log('[matrix] Straßendistanzen geladen:', data.cached ? 'Cache' : 'frisch', '| Größe:', Object.keys(data.matrix).length);
+      // Route-Tab neu rendern mit echten Distanzen
+      if (document.getElementById('content-routes')?.style.display !== 'none') {
+        loadRouteOrders();
+      }
+    }
+  } catch (err) {
+    console.warn('[matrix] Fehler, nutze Luftlinie:', err.message);
+    // Kein Error anzeigen — Haversine als stiller Fallback
+  } finally {
+    if (infoEl && infoEl.innerHTML.includes('Berechne')) infoEl.innerHTML = '';
+  }
 }
 
 function loadRouteOrders() {

@@ -8,6 +8,7 @@
     { "source": "/api/pipeline", "destination": "/api/pipeline" },
     { "source": "/api/auth", "destination": "/api/auth" },
     { "source": "/api/ack", "destination": "/api/ack" },
+    { "source": "/api/matrix", "destination": "/api/matrix" },
     { "source": "/api/webhook/superchat", "destination": "/api/webhook/superchat" },
     { "source": "/(.*)", "destination": "/public/index.html" }
   ],
@@ -19,6 +20,7 @@
     "api/pipeline.js": { "maxDuration": 20 },
     "api/auth.js":    { "maxDuration": 10 },
     "api/ack.js":     { "maxDuration": 10 },
+    "api/matrix.js":  { "maxDuration": 30 },
     "api/webhook/superchat.js": { "maxDuration": 10 }
   }
 }
