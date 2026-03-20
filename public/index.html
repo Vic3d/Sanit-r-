@@ -21,15 +21,36 @@
     }
   </script>
   <style>
-    body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    .tab-active { background: #334155; color: #f1f5f9; }
-    .tab-inactive { color: #94a3b8; }
-    .tab-inactive:hover { color: #cbd5e1; background: #1e293b; }
+    body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
+    /* ── Nav ── */
+    #top-nav { position: sticky; top: 0; z-index: 40; background: #0f172a; border-bottom: 1px solid #1e293b; padding: 10px 16px; display: flex; align-items: center; gap: 6px; }
+    #top-nav .nav-logo { font-size: 18px; font-weight: 700; color: #fff; margin-right: 8px; white-space: nowrap; }
+    #top-nav .nav-logo span { color: #3b82f6; }
+    .nav-tab { display: flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; border: none; transition: background 0.15s, color 0.15s; }
+    .nav-tab.active { background: #fff; color: #0f172a; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+    .nav-tab.inactive { background: transparent; color: #64748b; }
+    .nav-tab.inactive:hover { background: #1e293b; color: #cbd5e1; }
+    .nav-tab .tab-emoji { font-size: 15px; }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    #nav-date { font-size: 12px; color: #64748b; white-space: nowrap; }
+    #refreshBtn { background: transparent; border: 1px solid #334155; color: #94a3b8; width: 34px; height: 34px; border-radius: 8px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+    #refreshBtn:hover { background: #1e293b; color: #fff; }
+    /* ── Status Bar ── */
+    #status-bar { position: sticky; top: 57px; z-index: 39; background: #0a1020; border-bottom: 1px solid #1e293b; padding: 6px 16px; display: flex; align-items: center; gap: 6px; overflow-x: auto; flex-wrap: nowrap; }
+    .status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; border: 1px solid transparent; transition: border-color 0.15s; }
+    .status-pill:hover { border-color: #334155; }
+    .pill-red { background: #450a0a; color: #fca5a5; }
+    .pill-yellow { background: #431407; color: #fcd34d; }
+    .pill-green { background: #052e16; color: #86efac; }
+    .pill-blue { background: #0c1a3a; color: #93c5fd; }
+    .pill-sep { color: #334155; font-size: 14px; }
+    /* ── Cards ── */
     .badge-nord { background: #991b1b; color: #fca5a5; }
     .badge-ost { background: #1e3a5f; color: #93c5fd; }
     .badge-contacted { background: #065f46; color: #6ee7b7; }
     .badge-open { background: #991b1b; color: #fca5a5; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+    .card:hover { --card-hover: 1; }
     .expand-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
     .expand-content.open { max-height: 2000px; }
     .progress-bar { background: #334155; border-radius: 9999px; height: 8px; }
@@ -37,11 +58,11 @@
     @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     .loading-dot { animation: pulse-dot 1.5s infinite; }
     .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
-    @media (max-width: 768px) { #app { padding-bottom: 80px; } }
+    @media (max-width: 768px) { #app-content { padding-bottom: 16px; } #top-nav .nav-logo { display: none; } }
     input[type="text"] { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; }
     input[type="text"]::placeholder { color: #64748b; }
     input[type="text"]:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.2); }
-    #route-map { height: 450px; width: 100%; border-radius: 0.75rem; z-index: 1; }
+    #route-map { height: 400px; width: 100%; border-radius: 12px; z-index: 1; }
     .leaflet-popup-content-wrapper { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
     .leaflet-popup-tip { background: #1e293b; }
     .leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
@@ -53,66 +74,63 @@
     .planner-card { user-select: none; }
     .planner-card:active { cursor: grabbing; opacity: 0.6; }
     [data-col].bg-slate-800\/50 { outline: 2px dashed #60a5fa; outline-offset: -2px; }
+    /* ── Tech Selector Cards (Route Wizard) ── */
+    .tech-card { background: #1e293b; border: 2px solid #334155; border-radius: 12px; padding: 14px 18px; cursor: pointer; transition: border-color 0.15s, background 0.15s; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 110px; }
+    .tech-card:hover { background: #263349; }
+    .tech-card.selected { background: #172033; }
+    .tech-card .tc-name { font-weight: 600; font-size: 14px; color: #fff; }
+    .tech-card .tc-city { font-size: 12px; color: #94a3b8; }
+    /* ── Wizard Steps ── */
+    .wizard-step { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .wizard-num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+    .wizard-num.active { background: #3b82f6; color: #fff; }
+    .wizard-num.done { background: #22c55e; color: #fff; }
+    .wizard-num.pending { background: #334155; color: #94a3b8; }
+    .wizard-label { font-size: 13px; font-weight: 500; }
+    .wizard-label.active { color: #fff; }
+    .wizard-label.pending { color: #64748b; }
+    /* ── Buttons ── */
+    .btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: #3b82f6; color: #fff; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s; min-height: 40px; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+    .btn-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; background: #334155; color: #cbd5e1; border-radius: 8px; font-size: 13px; font-weight: 500; border: none; cursor: pointer; transition: background 0.15s; min-height: 40px; }
+    .btn-secondary:hover { background: #3d4f66; }
+    .btn-success { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: #22c55e; color: #fff; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s; min-height: 40px; }
+    .btn-success:hover { background: #16a34a; }
+    .btn-whatsapp { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; background: #15803d; color: #fff; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; min-height: 40px; }
+    .btn-whatsapp:hover { background: #166534; }
   </style>
 </head>
 <body class="min-h-screen">
-  <div id="app" class="max-w-7xl mx-auto px-4 py-4">
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-      <div class="flex items-center gap-3">
-        <span class="text-2xl">🔧</span>
-        <h1 class="text-xl font-bold text-white">Schutzeichel Backoffice</h1>
-      </div>
-      <div class="flex items-center gap-4">
-        <span class="text-xs text-slate-600 font-mono">v6.2.0</span>
-        <span id="lastUpdate" class="text-sm text-slate-400 font-medium"></span>
-        <button onclick="loadData(true)" id="refreshBtn"
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
-          Aktualisieren
-        </button>
-      </div>
-    </div>
 
-    <!-- Stats (mini, im Header) -->
-    <div id="stats" class="grid grid-cols-3 gap-3 mb-4">
-      <div class="card p-3 text-center">
-        <div class="text-xl font-bold text-white" id="statTotal">-</div>
-        <div class="text-xs text-slate-400">Offen</div>
-      </div>
-      <div class="card p-3 text-center">
-        <div class="text-xl font-bold text-red-400" id="statNeedContact">-</div>
-        <div class="text-xs text-slate-400">Anschreiben</div>
-      </div>
-      <div class="card p-3 text-center">
-        <div class="text-xl font-bold text-green-400" id="statContacted">-</div>
-        <div class="text-xs text-slate-400">Kontaktiert</div>
-      </div>
+  <!-- ═══ TOP NAV ═══ -->
+  <nav id="top-nav">
+    <span class="nav-logo">🔧 <span>Schutzeichel</span></span>
+    <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-tab active"><span class="tab-emoji">🏠</span><span class="tab-label">Start</span></button>
+    <button onclick="switchTab('orders')" id="tab-orders" class="nav-tab inactive"><span class="tab-emoji">📋</span><span class="tab-label">Aufträge</span></button>
+    <button onclick="switchTab('planner')" id="tab-planner" class="nav-tab inactive"><span class="tab-emoji">📅</span><span class="tab-label">Planen</span></button>
+    <button onclick="switchTab('routes')" id="tab-routes" class="nav-tab inactive"><span class="tab-emoji">🗺️</span><span class="tab-label">Route</span></button>
+    <button onclick="switchTab('calendar')" id="tab-calendar" class="nav-tab inactive"><span class="tab-emoji">📆</span><span class="tab-label">Kalender</span></button>
+    <button onclick="switchTab('email');loadEmails()" id="tab-email" class="nav-tab inactive" style="position:relative"><span class="tab-emoji">📧</span><span class="tab-label">E-Mail</span><span id="email-badge" class="hidden" style="position:absolute;top:4px;right:4px;background:#dc2626;color:#fff;font-size:10px;border-radius:9999px;padding:0 4px;line-height:16px;"></span></button>
+    <button onclick="switchTab('pipeline')" id="tab-pipeline" class="nav-tab inactive"><span class="tab-emoji">📊</span><span class="tab-label">Pipeline</span></button>
+    <div class="nav-right">
+      <span id="nav-date"></span>
+      <button id="refreshBtn" onclick="loadData(true)" title="Daten aktualisieren">🔄</button>
     </div>
+  </nav>
+
+  <!-- ═══ STATUS BAR ═══ -->
+  <div id="status-bar">
+    <span id="sb-content" class="status-pill pill-blue" style="cursor:default">⏳ Lädt…</span>
+  </div>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <div id="app-content" class="max-w-7xl mx-auto px-4 py-4">
 
     <!-- Globale Suche -->
     <div class="mb-4">
-      <input type="text" id="globalSearch" placeholder="🔍 Suche: Name, Adresse, PLZ, Telefon, Gewerk..." 
+      <input type="text" id="globalSearch" placeholder="🔍 Suche: Name, Adresse, PLZ, Telefon, Gewerk..."
         class="w-full px-4 py-2.5 rounded-lg text-sm" oninput="onGlobalSearch(this.value)">
-    </div>
-
-    <!-- Tabs -->
-    <div class="flex gap-1 mb-4 overflow-x-auto pb-1">
-      <button onclick="switchTab('dashboard')" id="tab-dashboard"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-active">🏠 Start</button>
-      <button onclick="switchTab('orders')" id="tab-orders"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📋 Aufträge</button>
-      <button onclick="switchTab('planner')" id="tab-planner"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📅 Planung</button>
-      <button onclick="switchTab('routes')" id="tab-routes"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">🗺️ Routen</button>
-      <button onclick="switchTab('calendar')" id="tab-calendar"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📅 Kalender</button>
-      <button onclick="switchTab('email');loadEmails()" id="tab-email"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive relative">
-        📧 Postfach<span id="email-badge" class="hidden ml-1 bg-red-600 text-white text-xs rounded-full px-1.5 py-0.5"></span>
-      </button>
-      <button onclick="switchTab('pipeline')" id="tab-pipeline"
-        class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap tab-inactive">📋 Pipeline</button>
     </div>
 
     <!-- Tab Content -->
@@ -126,32 +144,17 @@
     <div id="content-email" class="hidden"></div>
     <div id="content-pipeline" class="hidden"></div>
 
-    <!-- Mobile Bottom Nav -->
-    <div class="fixed bottom-0 left-0 right-0 bg-dark-card border-t border-dark-border md:hidden z-50 safe-bottom">
-      <div class="flex justify-around py-2">
-        <button onclick="switchTab('dashboard')" id="mob-dashboard" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
-          <span class="text-lg">🏠</span><span class="text-xs">Start</span>
-        </button>
-        <button onclick="switchTab('orders')" id="mob-orders" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
-          <span class="text-lg">📋</span><span class="text-xs">Aufträge</span>
-        </button>
-        <button onclick="switchTab('planner')" id="mob-planner" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
-          <span class="text-lg">📅</span><span class="text-xs">Planung</span>
-        </button>
-        <button onclick="switchTab('routes')" id="mob-routes" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
-          <span class="text-lg">🗺️</span><span class="text-xs">Routen</span>
-        </button>
-        <button onclick="switchTab('calendar')" id="mob-calendar" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400">
-          <span class="text-lg">📆</span><span class="text-xs">Kalender</span>
-        </button>
-        <button onclick="switchTab('email');loadEmails()" id="mob-email" class="flex flex-col items-center gap-0.5 px-3 py-1 text-slate-400 relative">
-          <span class="text-lg">📧</span><span class="text-xs">Postfach</span>
-        </button>
-      </div>
+    <!-- Hidden stat elements (keep for backward compat) -->
+    <div id="stats" class="hidden">
+      <div id="statTotal"></div>
+      <div id="statNeedContact"></div>
+      <div id="statContacted"></div>
+      <div id="statGroups"></div>
     </div>
+    <span id="lastUpdate" class="hidden"></span>
 
     <!-- Loading -->
-    <div id="loading" class="text-center py-16 mb-16 md:mb-0">
+    <div id="loading" class="text-center py-16">
       <div class="flex justify-center gap-2 mb-4">
         <div class="w-3 h-3 bg-blue-500 rounded-full loading-dot"></div>
         <div class="w-3 h-3 bg-blue-500 rounded-full loading-dot" style="animation-delay:0.3s"></div>
@@ -286,8 +289,9 @@ function assignOrderToTech(orderId, techId) {
 // ═══════════════════════════════════════════════════════════════
 async function loadData(force = false) {
   const btn = document.getElementById('refreshBtn');
-  btn.textContent = '⏳ Laden…';
+  btn.textContent = '⏳';
   btn.disabled = true;
+  updateNavDate();
 
   try {
     const url = '/api/state' + (force ? '?refresh=1' : '');
@@ -302,10 +306,12 @@ async function loadData(force = false) {
   } catch (err) {
     console.error('Laden fehlgeschlagen:', err);
     document.getElementById('loading').innerHTML =
-      `<p class="text-red-400">❌ Fehler beim Laden: ${err.message}</p>
-       <button onclick="loadData(true)" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Erneut versuchen</button>`;
+      `<div class="card p-8 text-center">
+        <p class="text-red-400 mb-4">❌ Fehler beim Laden: ${err.message}</p>
+        <button onclick="loadData(true)" class="btn-primary">🔄 Erneut versuchen</button>
+      </div>`;
   } finally {
-    btn.textContent = 'Aktualisieren';
+    btn.textContent = '🔄';
     btn.disabled = false;
   }
 }
@@ -323,6 +329,49 @@ function updateStats() {
   if (el('statNeedContact')) el('statNeedContact').textContent = DATA.stats.needContact;
   if (el('statContacted')) el('statContacted').textContent = DATA.stats.contacted;
   if (el('statGroups')) el('statGroups').textContent = DATA.stats.addressGroups;
+  updateStatusBar();
+  updateNavDate();
+}
+
+function updateNavDate() {
+  const el = document.getElementById('nav-date');
+  if (!el) return;
+  const now = new Date();
+  const dayNames = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+  const monthNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  el.textContent = `${dayNames[now.getDay()]}. ${now.getDate()}. ${monthNames[now.getMonth()]}`;
+}
+
+function updateStatusBar() {
+  const sbEl = document.getElementById('sb-content');
+  if (!sbEl) return;
+
+  if (!STATE.ready) {
+    sbEl.innerHTML = '⏳ Lädt…';
+    return;
+  }
+
+  // Count statuses
+  let neu = 0, kontaktiert = 0, termin = 0, erledigt = 0;
+  STATE.orders.forEach(o => {
+    const s = getOrderStatus(o.id);
+    if (s === 'neu') neu++;
+    else if (s === 'kontaktiert') kontaktiert++;
+    else if (s === 'termin') termin++;
+    else if (s === 'erledigt' || s === 'abgerechnet') erledigt++;
+  });
+  const activeTechs = TECHS.filter(t => (STATE.assignments[t.id] || []).length > 0).length;
+
+  const parent = sbEl.parentElement;
+  parent.innerHTML = `
+    <span class="status-pill pill-red" onclick="dashFilter('neu')" title="Noch nicht kontaktiert">🔴 ${neu} neu anzuschreiben</span>
+    <span class="pill-sep">•</span>
+    <span class="status-pill pill-yellow" onclick="dashFilter('kontaktiert')" title="Kontaktiert, wartet auf Termin">🟡 ${kontaktiert} kontaktiert</span>
+    <span class="pill-sep">•</span>
+    <span class="status-pill pill-green" onclick="dashFilter('termin')" title="Termin vereinbart">✅ ${termin} mit Termin</span>
+    <span class="pill-sep">•</span>
+    <span class="status-pill pill-blue" style="cursor:default">👷 ${activeTechs} Monteure aktiv</span>
+  `;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -334,10 +383,9 @@ function switchTab(tab) {
     const el = document.getElementById('content-' + t);
     if (el) el.classList.toggle('hidden', t !== tab);
     const tabBtn = document.getElementById('tab-' + t);
-    if (tabBtn) tabBtn.className = `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${t === tab ? 'tab-active' : 'tab-inactive'}`;
-    // Mobile bottom nav
-    const mobBtn = document.getElementById('mob-' + t);
-    if (mobBtn) mobBtn.className = `flex flex-col items-center gap-0.5 px-3 py-1 ${t === tab ? 'text-blue-400' : 'text-slate-400'}`;
+    if (tabBtn) {
+      tabBtn.className = t === tab ? 'nav-tab active' : 'nav-tab inactive';
+    }
   });
   renderCurrentTab();
 }
@@ -972,69 +1020,78 @@ function renderRoutes() {
   // Preserve sort mode across renders
   if (!window._routeSortMode) window._routeSortMode = 'newest';
 
+  // Build tech cards HTML
+  const techCards = TECHS.map(t => {
+    const isSelected = routeSelectedTech === t.id;
+    return `<div class="tech-card ${isSelected ? 'selected' : ''}" style="border-color:${isSelected ? t.color : '#334155'}" onclick="onTechCardSelected(${t.id})">
+      <div style="font-size:22px;">👷</div>
+      <div class="tc-name" style="color:${isSelected ? t.color : '#fff'}">${esc(t.name)}</div>
+      <div class="tc-city">${esc(t.city)}</div>
+    </div>`;
+  }).join('');
+
+  const step1Done = !!routeSelectedTech;
+  const step2Done = routeSelectedOrders.size > 0;
+
   container.innerHTML = `
-    <!-- Row 1: Monteur + Aktionen -->
-    <div class="card p-3 mb-3 flex flex-wrap items-center gap-3">
-      <h2 class="text-base font-bold text-white">🗺️ Routenplaner</h2>
-      <div class="flex items-center gap-2">
-        <label class="text-sm text-slate-400">Monteur:</label>
-        <select id="techSelect" onchange="onTechSelected()" class="bg-slate-800 border border-dark-border text-white rounded-lg px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-          <option value="">— Wählen —</option>
-          ${techOptions}
-        </select>
+    <!-- Step 1: Monteur wählen -->
+    <div class="mb-4">
+      <div class="wizard-step mb-3">
+        <span class="wizard-num ${step1Done ? 'done' : 'active'}">1</span>
+        <span class="wizard-label active">Monteur wählen</span>
       </div>
-      <div class="flex items-center gap-2">
-        <label class="text-sm text-slate-400">Anzeige:</label>
-        <select id="routeViewMode" onchange="loadRouteOrders()" class="bg-slate-800 border border-dark-border text-white rounded-lg px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-          <option value="assigned">🎯 Zugeordnete Aufträge</option>
-          <option value="1d">🕐 Heute</option>
-          <option value="2d">🕐 2 Tage</option>
-          <option value="3d" selected>🕐 3 Tage</option>
-          <option value="7d">🕐 7 Tage</option>
-          <option value="14d">🕐 14 Tage</option>
-          <option value="30d">🕐 30 Tage</option>
-          <option value="all">📋 Alle Aufträge</option>
-        </select>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">${techCards}</div>
+    </div>
+
+    <!-- Step 2: Aufträge (erscheint nach Monteur-Auswahl) -->
+    <div class="${step1Done ? '' : 'opacity-40 pointer-events-none'}">
+      <div class="wizard-step mb-3">
+        <span class="wizard-num ${step2Done ? 'done' : step1Done ? 'active' : 'pending'}">2</span>
+        <span class="wizard-label ${step1Done ? 'active' : 'pending'}">Aufträge auswählen</span>
+        <div class="flex items-center gap-2 ml-auto">
+          <label class="text-xs text-slate-500">Zeitraum:</label>
+          <select id="routeViewMode" onchange="loadRouteOrders()" class="bg-slate-800 border border-dark-border text-white rounded-lg px-2 py-1 text-xs focus:border-blue-500 focus:outline-none">
+            <option value="assigned">🎯 Aus Tagesplan</option>
+            <option value="1d">Heute</option>
+            <option value="2d">2 Tage</option>
+            <option value="3d" selected>3 Tage</option>
+            <option value="7d">7 Tage</option>
+            <option value="14d">14 Tage</option>
+            <option value="all">Alle</option>
+          </select>
+          <div id="route-info" class="text-xs text-slate-400"></div>
+        </div>
       </div>
-      <div class="flex gap-2 ml-auto">
-        <button onclick="loadRouteOrders()" id="loadOrdersBtn"
-          class="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
-          🔄 Aktualisieren
-        </button>
-        <button onclick="optimizeSelectedRoute()" id="optimizeBtn" disabled
-          class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors">
-          🗺️ Route berechnen
-        </button>
+
+      <!-- Kapazitäts-Balken -->
+      <div id="tech-capacity" class="mb-3"></div>
+
+      <!-- Map -->
+      <div class="card mb-3 overflow-hidden" style="height:380px">
+        <div id="route-map" style="height:100%;width:100%"></div>
+      </div>
+
+      <!-- Order list -->
+      <div id="route-order-list">
+        <div class="card p-8 text-center text-slate-500">Monteur auswählen — Aufträge laden automatisch.</div>
       </div>
     </div>
 
-    <!-- Row 2: Sortierung + Info -->
-    <div class="card p-3 mb-3 flex flex-wrap items-center gap-3">
-      <div class="flex items-center gap-1">
-        <span class="text-xs text-slate-500 mr-1">Sortierung:</span>
-        <button onclick="setRouteSort('newest')" id="sort-newest" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='newest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">🕐 Neueste</button>
-        <button onclick="setRouteSort('oldest')" id="sort-oldest" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='oldest'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">📅 Älteste</button>
-        <button onclick="setRouteSort('distance')" id="sort-distance" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='distance'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">📍 Nähe</button>
-        <button onclick="setRouteSort('emergency')" id="sort-emergency" class="px-2 py-1 text-xs rounded ${window._routeSortMode==='emergency'?'bg-blue-600 text-white':'bg-slate-700 text-slate-400 hover:bg-slate-600'}">⚡ Notfälle</button>
+    <!-- Step 3: Route optimieren -->
+    <div class="mt-4 ${step2Done ? '' : 'hidden'}" id="step3-section">
+      <div class="wizard-step mb-3">
+        <span class="wizard-num active">3</span>
+        <span class="wizard-label active">Route optimieren &amp; senden</span>
       </div>
-      <div id="route-info" class="text-xs text-slate-400 ml-auto"></div>
-    </div>
-
-    <!-- Kapazitäts-Balken -->
-    <div id="tech-capacity" class="mb-3"></div>
-
-    <!-- Map -->
-    <div class="card mb-3 overflow-hidden" style="height:400px">
-      <div id="route-map" style="height:100%;width:100%"></div>
+      <div class="flex gap-3 flex-wrap">
+        <button onclick="optimizeSelectedRoute()" id="optimizeBtn" class="btn-primary" ${step2Done ? '' : 'disabled'}>
+          🗺️ Route optimieren →
+        </button>
+      </div>
     </div>
 
     <!-- Route result (hidden until calculated) -->
-    <div id="route-result" class="mb-3"></div>
-
-    <!-- Order list -->
-    <div id="route-order-list">
-      <div class="card p-8 text-center text-slate-500">Monteur auswählen — Aufträge laden automatisch.<br><span class="text-xs">Tipp: Im Tagesplan zuordnen → hier "Zugeordnete Aufträge" wählen → Route berechnen</span></div>
-    </div>`;
+    <div id="route-result" class="mt-4"></div>`;
 
   setTimeout(() => {
     initRouteMap();
@@ -1083,19 +1140,30 @@ function clearRouteMap() {
 
 function onTechSelected() {
   const sel = document.getElementById('techSelect');
-  routeSelectedTech = sel.value ? parseInt(sel.value) : null;
+  routeSelectedTech = sel ? (sel.value ? parseInt(sel.value) : null) : routeSelectedTech;
   routeSelectedOrders.clear();
-  document.getElementById('route-result').innerHTML = '';
+  const resultEl = document.getElementById('route-result');
+  if (resultEl) resultEl.innerHTML = '';
   clearRouteMap();
   showTechHomes();
-  // Auto-load: if "Zugeordnete" view mode, load assigned orders
   loadRouteOrders();
   updateOptimizeBtn();
 }
 
+function onTechCardSelected(techId) {
+  routeSelectedTech = techId;
+  routeSelectedOrders.clear();
+  lastRouteResult = null;
+  // Re-render route tab to update card highlights + wizard state
+  renderRoutes();
+}
+
 function updateOptimizeBtn() {
   const btn = document.getElementById('optimizeBtn');
-  if (btn) btn.disabled = !(routeSelectedTech && routeSelectedOrders.size > 0);
+  const ready = !!(routeSelectedTech && routeSelectedOrders.size > 0);
+  if (btn) btn.disabled = !ready;
+  const step3 = document.getElementById('step3-section');
+  if (step3) step3.classList.toggle('hidden', !ready);
 }
 
 function toggleOrderSelection(orderId) {
@@ -1399,7 +1467,7 @@ async function optimizeSelectedRoute() {
   const btn = document.getElementById('optimizeBtn');
   const result = document.getElementById('route-result');
   btn.disabled = true;
-  btn.textContent = '⏳ Berechne…';
+  btn.innerHTML = '⏳ Berechne…';
   result.innerHTML = '<div class="card p-4 text-center text-slate-400">Route wird optimiert…</div>';
 
   try {
@@ -1421,7 +1489,7 @@ async function optimizeSelectedRoute() {
     result.innerHTML = `<div class="card p-4 text-center text-red-400">❌ ${esc(err.message)}</div>`;
   } finally {
     btn.disabled = false;
-    btn.textContent = '🗺️ Route berechnen';
+    btn.innerHTML = '🗺️ Route optimieren →';
     updateOptimizeBtn();
   }
 }
