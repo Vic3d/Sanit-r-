@@ -10,7 +10,9 @@
 
 const https    = require('https');
 const { geocodeBatch } = require('./_lib/geocoder');
-const ors      = require('./_lib/ors');
+// ORS lazy-loaded (vermeidet Vercel Build-Fehler bei fehlendem ORS_API_KEY)
+let _ors = null;
+function getOrs() { if (!_ors) _ors = require('./_lib/ors'); return _ors; }
 
 const TECHNICIANS = [
   { id: 1, name: 'Nico Kussio',  home: [8.3858, 51.9069], city: 'Gütersloh', color: '#3b82f6', boId: 158934 },
@@ -207,14 +209,14 @@ module.exports = async (req, res) => {
       const routeCoords = [tech.home, ...ordersToRoute.map(o => o.coords)];
 
       // ── Versuch 1: OpenRouteService (wenn ORS_API_KEY in Env) ──────────────
-      if (ors.isAvailable()) {
+      if (getOrs().isAvailable()) {
         try {
           const jobs = ordersToRoute.map((o, i) => ({
             id: i,
             location: o.coords,
             service: estimateJobDuration(o), // Schätzung pro Auftragstyp (Sekunden)
           }));
-          const result = await ors.orsOptimize({ start: tech.home, end: tech.home }, jobs);
+          const result = await getOrs().orsOptimize({ start: tech.home, end: tech.home }, jobs);
           route         = result.route;
           totalDistance = result.distance_m ? Math.round(result.distance_m / 100) / 10 : null;
           totalDuration = result.duration_s || null;
