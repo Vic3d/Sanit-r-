@@ -1539,15 +1539,28 @@ async function optimizeSelectedRoute() {
 }
 
 function buildGmapsUrl(tech, orders) {
-  // Origin + Destination = Heimatort → Rundtour
+  // TRA-215: Echte Straßenadressen statt PLZ-Koordinaten — Google Maps geocodet selbst
+  // Origin + Destination = Heimatort (Koordinaten für präzisen Startpunkt)
   const home = tech.home[1] + ',' + tech.home[0];
-  // Deduplicate: mehrere Aufträge in gleicher PLZ → gleiche Koordinaten → ein Waypoint
+
+  // Deduplicate nach exakter Adresse (Straße + PLZ + Stadt)
+  // → besser als PLZ-Koordinaten-Dedup, fängt auch gleiche Straßen in gleicher PLZ
   const seen = new Set();
   const stops = orders
-    .filter(function(o) { return o.coords; })
-    .map(function(o) { return o.coords[1] + ',' + o.coords[0]; })
-    .filter(function(c) { if (seen.has(c)) return false; seen.add(c); return true; })
+    .filter(function(o) { return o.street && o.zipcode; })
+    .map(function(o) {
+      const addr = (o.street + ', ' + o.zipcode + ' ' + o.city).trim();
+      return addr;
+    })
+    .filter(function(addr) {
+      const key = addr.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(function(addr) { return encodeURIComponent(addr); })
     .join('|');
+
   let url = 'https://www.google.com/maps/dir/?api=1&origin=' + home + '&destination=' + home + '&travelmode=driving';
   if (stops) url += '&waypoints=optimize:true|' + stops;
   return url;
@@ -2235,18 +2248,10 @@ function exportPlannerRoutes() {
     assigned.forEach((o, i) => {
       text += `${i+1}. ${o.renter}\n   📍 ${o.street}, ${o.zipcode} ${o.city}${o.telephone ? '\n   📞 ' + o.telephone : ''}\n   🔧 ${o.craft || o.disturbanceType || ''}\n`;
     });
-    // Google Maps link for this tech's route
-    if (assigned.length > 0 && assigned[0].coords) {
-      const origin = t.home[1] + ',' + t.home[0];
-      const wpSeen = new Set();
-      const waypoints = assigned.filter(o => o.coords)
-        .map(o => o.coords[1] + ',' + o.coords[0])
-        .filter(c => { if (wpSeen.has(c)) return false; wpSeen.add(c); return true; })
-        .join('|');
-      if (waypoints) {
-        const gmUrl = 'https://www.google.com/maps/dir/?api=1&origin=' + origin + '&destination=' + origin + '&travelmode=driving&waypoints=optimize:true|' + waypoints;
-        text += '   📍 Maps: ' + gmUrl + '\n';
-      }
+    // Google Maps link for this tech's route (TRA-215: echte Adressen statt PLZ-Koordinaten)
+    if (assigned.length > 0) {
+      const gmUrl = buildGmapsUrl(t, assigned);
+      if (gmUrl) text += '   📍 Maps: ' + gmUrl + '\n';
     }
     text += '\n';
   });
