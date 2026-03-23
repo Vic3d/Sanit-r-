@@ -601,6 +601,35 @@ function setOrderStatus(orderId, status) {
   renderCurrentTab();
 }
 
+// ── B&O Annehmen ─────────────────────────────────────────────
+async function boAcceptOrder(orderId) {
+  const btn = document.getElementById('bo-accept-btn-' + orderId);
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ Wird angenommen…';
+  btn.style.color = '#94a3b8';
+
+  try {
+    const r = await fetch(`/api/accept?id=${encodeURIComponent(orderId)}`);
+    const data = await r.json();
+
+    if (data.ok) {
+      localStorage.setItem('josh-bo-accepted-' + orderId, '1');
+      btn.outerHTML = `<span class="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400 font-medium">✅ Angenommen</span>`;
+    } else {
+      btn.disabled = false;
+      btn.textContent = '✅ Annehmen';
+      btn.style.color = '#4ade80';
+      alert('Fehler beim Annehmen: ' + (data.error || 'Unbekannt'));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '✅ Annehmen';
+    btn.style.color = '#4ade80';
+    alert('Netzwerkfehler: ' + e.message);
+  }
+}
+
 function getOrderNote(orderId) {
   return localStorage.getItem('josh-note-' + orderId) || '';
 }
@@ -851,10 +880,15 @@ function renderOrderCard(o, mode = 'full') {
   }
 
   if (mode === 'full') {
+    const boAccepted = localStorage.getItem('josh-bo-accepted-' + o.id) === '1';
     html += `<div class="mt-2 flex flex-wrap gap-2 items-center">
           <button onclick="event.stopPropagation();toggleNote('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">📝 ${note ? 'Notiz' : '+ Notiz'}</button>
           <button onclick="event.stopPropagation();toggleFollowUp('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">🔔 ${followUp ? 'Wiedervorlage' : '+ Wiedervorlage'}</button>
           <button onclick="event.stopPropagation();toggleAppointment('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">📅 ${appointment ? 'Termin' : '+ Termin'}</button>
+          ${boAccepted
+            ? `<span class="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400 font-medium">✅ Angenommen</span>`
+            : `<button id="bo-accept-btn-${esc(o.id)}" onclick="event.stopPropagation();boAcceptOrder('${esc(o.id)}')" class="text-xs px-2 py-1 rounded font-medium" style="background:#16a34a22;color:#4ade80;border:1px solid #16a34a55">✅ Annehmen</button>`
+          }
         </div>
         <div id="note-${esc(o.id)}" class="${note ? '' : 'hidden'} mt-1">
           <textarea id="note-input-${esc(o.id)}" onblur="setOrderNote('${esc(o.id)}',this.value)" class="w-full px-2 py-1 text-xs rounded border border-dark-border resize-none" rows="2" placeholder="Notiz...">${esc(note)}</textarea>
