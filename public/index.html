@@ -430,7 +430,7 @@ function updateLifecycleBadges() {
   const orders = STATE.orders;
   const heroStats = DATA?.heroStats || {};
 
-  const neuCount = orders.filter(o => !o.contacted && !o.heroJob).length;
+  const neuCount = orders.filter(o => o.orderState === 1 && !o.contacted && !o.heroJob).length;
   const kontaktCount = orders.filter(o => o.contacted && (!o.heroJob || o.heroJob.status === 'Offen')).length;
   const terminCount = orders.filter(o => o.heroJob && ['Offen','Zugewiesen'].includes(o.heroJob.status)).length;
   const einsatzCount = orders.filter(o => o.heroJob && o.heroJob.status === 'Zugewiesen').length;
@@ -463,11 +463,11 @@ function lifecycleHeader(emoji, title, subtitle, color) {
   </div>`;
 }
 
-// Stage 1: NEU — nicht kontaktiert, kein Hero-Job
+// Stage 1: NEU — nicht kontaktiert, kein Hero-Job, noch nicht angenommen in B&O
 function renderLifecycleNeu() {
   const container = document.getElementById('content-neu');
   if (!STATE.ready) { container.innerHTML = '<div class="card p-8 text-center text-slate-400">Laden…</div>'; return; }
-  const orders = STATE.orders.filter(o => !o.contacted && !o.heroJob && matchesGlobalSearch(o));
+  const orders = STATE.orders.filter(o => o.orderState === 1 && !o.contacted && !o.heroJob && matchesGlobalSearch(o));
   orders.sort((a,b) => { if (a.emergency && !b.emergency) return -1; if (!a.emergency && b.emergency) return 1; return (b.dateStr||'').localeCompare(a.dateStr||''); });
   let html = lifecycleHeader('🆕','Neu — Noch nicht angeschrieben',`${orders.length} Aufträge warten auf ersten Kontakt`,'#dc2626');
   if (!orders.length) { html += '<div class="card p-8 text-center text-green-400">✅ Alle Aufträge wurden bereits angeschrieben</div>'; }
