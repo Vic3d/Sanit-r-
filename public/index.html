@@ -2895,7 +2895,7 @@ async function doLogin() {
 // ═══════════════════════════════════════════════════════════════
 checkAuth().then(ok => {
   if (ok) {
-    loadData();
+    loadData(true); // Immer frisch von B&O beim ersten Laden
     // Alle 5 Min still im Hintergrund aktualisieren
     setInterval(() => loadData(true), 5 * 60 * 1000);
   }
