@@ -601,6 +601,23 @@ function setOrderStatus(orderId, status) {
   renderCurrentTab();
 }
 
+// ── B&O Auftragsnummer kopieren + Portal öffnen ───────────────
+function copyBoId(orderId, el) {
+  navigator.clipboard.writeText(orderId).then(() => {
+    // Visuelles Feedback
+    const orig = el.textContent;
+    el.textContent = '✓ Kopiert!';
+    el.style.color = '#4ade80';
+    setTimeout(() => { el.textContent = '#' + orderId; el.style.color = ''; }, 1500);
+    // B&O Portal in neuem Tab öffnen
+    window.open('https://bohwk.de/#/auftragssuche.html', '_blank');
+  }).catch(() => {
+    // Fallback: prompt
+    window.prompt('Auftragsnummer kopieren (Strg+C):', orderId);
+    window.open('https://bohwk.de/#/auftragssuche.html', '_blank');
+  });
+}
+
 // ── B&O Annehmen ─────────────────────────────────────────────
 async function boAcceptOrder(orderId) {
   const btn = document.getElementById('bo-accept-btn-' + orderId);
@@ -843,7 +860,7 @@ function renderOrderCard(o, mode = 'full') {
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
-          <a href="https://bohwk.de/#/auftragssuche.html" target="_blank" onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(o.id)}')" class="font-mono text-xs text-blue-400 hover:text-blue-300 hover:underline" title="B&O öffnen + Nummer kopieren">#${esc(o.id)}</a>
+          <span class="font-mono text-xs text-blue-400 hover:text-blue-300 cursor-pointer hover:underline" onclick="event.stopPropagation();copyBoId('${esc(o.id)}',this)" title="Auftragsnummer kopieren">#${esc(o.id)}</span>
           ${o.emergency ? '<span class="text-xs font-bold px-1 py-0.5 bg-red-900/50 text-red-400 rounded">⚡</span>' : ''}
           <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
           ${o.contacted ? '<span class="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-400">✅</span>' : '<span class="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">📞</span>'}
