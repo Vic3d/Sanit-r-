@@ -633,6 +633,8 @@ async function boAcceptOrder(orderId) {
     if (data.ok) {
       localStorage.setItem('josh-bo-accepted-' + orderId, '1');
       btn.outerHTML = `<span class="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-400 font-medium">✅ Angenommen</span>`;
+      // Daten sofort neu laden damit der Auftrag aus der Neu-Liste verschwindet
+      setTimeout(() => loadData(true), 800);
     } else {
       btn.disabled = false;
       btn.textContent = '✅ Annehmen';
@@ -2891,7 +2893,13 @@ async function doLogin() {
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
-checkAuth().then(ok => { if (ok) loadData(); });
+checkAuth().then(ok => {
+  if (ok) {
+    loadData();
+    // Alle 5 Min still im Hintergrund aktualisieren
+    setInterval(() => loadData(true), 5 * 60 * 1000);
+  }
+});
 
 // Auto-refresh deaktiviert — nur manuell per Button
 
