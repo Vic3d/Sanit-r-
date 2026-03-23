@@ -843,7 +843,7 @@ function renderOrderCard(o, mode = 'full') {
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
-          <span class="font-mono text-xs text-slate-500">#${esc(o.id)}</span>
+          <a href="https://bohwk.de/#/auftragssuche.html" target="_blank" onclick="event.stopPropagation();navigator.clipboard.writeText('${esc(o.id)}')" class="font-mono text-xs text-blue-400 hover:text-blue-300 hover:underline" title="B&O öffnen + Nummer kopieren">#${esc(o.id)}</a>
           ${o.emergency ? '<span class="text-xs font-bold px-1 py-0.5 bg-red-900/50 text-red-400 rounded">⚡</span>' : ''}
           <span class="text-white font-medium text-sm">${esc(o.renter)}</span>
           ${o.contacted ? '<span class="text-xs px-1.5 py-0.5 rounded bg-green-900/50 text-green-400">✅</span>' : '<span class="text-xs px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">📞</span>'}
