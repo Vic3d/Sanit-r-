@@ -213,11 +213,19 @@ module.exports = async function handler(req, res) {
     return b.isoDate.localeCompare(a.isoDate);
   });
 
-  // TTL-Filter: Gelesene Mails älter als 2 Tage ausblenden
+  // TTL-Filter: Gelesene Mails nach Kategorie ausblenden
   // Ungelesene bleiben immer sichtbar, egal wie alt
-  const TTL_MS = 2 * 24 * 60 * 60 * 1000;
-  const cutoff = new Date(Date.now() - TTL_MS).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
-  const visibleEmails = allEmails.filter(e => e.isUnread || e.isoDate >= cutoff);
+  const TTL = {
+    DRINGEND: 1 * 24 * 60 * 60 * 1000,  // 24h
+    AUFTRAG:  3 * 24 * 60 * 60 * 1000,  // 3 Tage
+    ANFRAGE:  3 * 24 * 60 * 60 * 1000,  // 3 Tage
+    SONSTIGE: 1 * 24 * 60 * 60 * 1000,  // 24h
+    SPAM:     1 * 24 * 60 * 60 * 1000,  // 24h
+  };
+  function cutoffFor(cat) {
+    return new Date(Date.now() - (TTL[cat] || TTL.AUFTRAG)).toISOString().slice(0, 16);
+  }
+  const visibleEmails = allEmails.filter(e => e.isUnread || e.isoDate >= cutoffFor(e.category));
 
   // Kategorien
   const byCategory = {
