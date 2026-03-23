@@ -213,20 +213,27 @@ module.exports = async function handler(req, res) {
     return b.isoDate.localeCompare(a.isoDate);
   });
 
+  // TTL-Filter: Gelesene Mails älter als 2 Tage ausblenden
+  // Ungelesene bleiben immer sichtbar, egal wie alt
+  const TTL_MS = 2 * 24 * 60 * 60 * 1000;
+  const cutoff = new Date(Date.now() - TTL_MS).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+  const visibleEmails = allEmails.filter(e => e.isUnread || e.isoDate >= cutoff);
+
   // Kategorien
   const byCategory = {
-    DRINGEND: allEmails.filter(e => e.category === 'DRINGEND'),
-    AUFTRAG:  allEmails.filter(e => e.category === 'AUFTRAG'),
-    ANFRAGE:  allEmails.filter(e => e.category === 'ANFRAGE'),
-    SONSTIGE: allEmails.filter(e => e.category === 'SONSTIGE'),
-    SPAM:     allEmails.filter(e => e.category === 'SPAM'),
+    DRINGEND: visibleEmails.filter(e => e.category === 'DRINGEND'),
+    AUFTRAG:  visibleEmails.filter(e => e.category === 'AUFTRAG'),
+    ANFRAGE:  visibleEmails.filter(e => e.category === 'ANFRAGE'),
+    SONSTIGE: visibleEmails.filter(e => e.category === 'SONSTIGE'),
+    SPAM:     visibleEmails.filter(e => e.category === 'SPAM'),
   };
 
-  const unreadTotal = allEmails.filter(e => e.isUnread).length;
+  const unreadTotal = visibleEmails.filter(e => e.isUnread).length;
 
   const result = {
     ok: true,
-    total: allEmails.length,
+    total: visibleEmails.length,
+    totalRaw: allEmails.length,
     unread: unreadTotal,
     byCategory,
     errors,
