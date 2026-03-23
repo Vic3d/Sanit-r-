@@ -897,7 +897,8 @@ function renderOrderCard(o, mode = 'full') {
   }
 
   if (mode === 'full') {
-    const boAccepted = localStorage.getItem('josh-bo-accepted-' + o.id) === '1';
+    // Bereits angenommen wenn: orderState >= 2 (laufend) ODER localStorage-Flag gesetzt
+    const boAccepted = (o.orderState >= 2) || localStorage.getItem('josh-bo-accepted-' + o.id) === '1';
     html += `<div class="mt-2 flex flex-wrap gap-2 items-center">
           <button onclick="event.stopPropagation();toggleNote('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">📝 ${note ? 'Notiz' : '+ Notiz'}</button>
           <button onclick="event.stopPropagation();toggleFollowUp('${esc(o.id)}')" class="text-xs text-slate-500 hover:text-slate-300">🔔 ${followUp ? 'Wiedervorlage' : '+ Wiedervorlage'}</button>
